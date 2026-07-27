@@ -1,26 +1,30 @@
-import { categories } from "../data/categories";
+import { allCategory } from "../data/categories";
+import type { Category } from "../types";
+import { CategoryBadge } from "./CategoryBadge";
 import { FilterPill } from "./FilterPill";
 
 interface CategoryFiltersProps {
+  categories: Category[];
   active: string;
   onSelect: (id: string) => void;
 }
 
-export function CategoryFilters({ active, onSelect }: CategoryFiltersProps) {
+export function CategoryFilters({ categories, active, onSelect }: CategoryFiltersProps) {
   return (
     <div className="flex w-full flex-wrap items-center gap-2.5">
-      {categories.map((category) => (
+      {[allCategory, ...categories].map((category) => (
         <FilterPill
           key={category.id}
           label={category.label}
           active={category.id === active}
           onClick={() => onSelect(category.id)}
           icon={
-            category.iconSrc && (
-              <img
-                src={category.iconSrc}
-                alt=""
-                className="h-[22px] w-[22px] rounded-full object-cover"
+            (category.iconSrc || category.iconName || category.colour) && (
+              <CategoryBadge
+                iconSrc={category.iconSrc}
+                iconName={category.iconName}
+                colour={category.colour}
+                size={22}
               />
             )
           }

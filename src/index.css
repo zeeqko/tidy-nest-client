@@ -32,8 +32,14 @@
   --radius-cute-l: 28px;
 }
 
+html {
+  -webkit-tap-highlight-color: transparent;
+}
+
 body {
   margin: 0;
   background: var(--color-cute-bg);
   font-family: var(--font-body);
+  /* PWA standalone: no rubber-band pull past the page edges. */
+  overscroll-behavior-y: contain;
 }

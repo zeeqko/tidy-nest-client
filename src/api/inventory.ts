@@ -1,4 +1,12 @@
+import { request } from "./http";
+
 const BASE_URL = "/api/inventory";
+
+/** Tag as carried on an item; colour is filled in by the backend. */
+export interface ApiItemTag {
+  name: string;
+  colour?: string;
+}
 
 /** Inventory item as served by the Go backend. */
 export interface ApiInventoryItem {
@@ -9,44 +17,39 @@ export interface ApiInventoryItem {
   subcategory: string;
   location: string;
   quantity: number;
-  tag?: string;
+  tags: ApiItemTag[];
   status?: string;
   notes?: string;
+  /** Same-origin URL of the item's photo (e.g. /uploads/ab12.jpg). */
+  imageURL?: string;
+  /** Optional dates in YYYY-MM-DD form. */
+  expiryDate?: string;
+  opensOn?: string;
   createdAt: string;
   updatedAt: string;
 }
 
-export type NewInventoryItem = Omit<ApiInventoryItem, "id" | "createdAt" | "updatedAt">;
-
-async function request<T>(path: string, init?: RequestInit): Promise<T> {
-  const response = await fetch(`${BASE_URL}${path}`, {
-    headers: { "Content-Type": "application/json" },
-    ...init,
-  });
-  if (!response.ok) {
-    const body = await response.json().catch(() => null);
-    throw new Error(body?.error ?? `Request failed with status ${response.status}`);
-  }
-  if (response.status === 204) return undefined as T;
-  return response.json();
-}
+export type NewInventoryItem = Omit<
+  ApiInventoryItem,
+  "id" | "subtitle" | "status" | "createdAt" | "updatedAt"
+>;
 
 export function listItems(): Promise<ApiInventoryItem[]> {
-  return request("/");
+  return request(`${BASE_URL}/`);
 }
 
 export function getItem(id: string): Promise<ApiInventoryItem> {
-  return request(`/${id}`);
+  return request(`${BASE_URL}/${id}`);
 }
 
 export function createItem(item: NewInventoryItem): Promise<ApiInventoryItem> {
-  return request("/", { method: "POST", body: JSON.stringify(item) });
+  return request(`${BASE_URL}/`, { method: "POST", body: JSON.stringify(item) });
 }
 
 export function updateItem(id: string, item: NewInventoryItem): Promise<ApiInventoryItem> {
-  return request(`/${id}`, { method: "PUT", body: JSON.stringify(item) });
+  return request(`${BASE_URL}/${id}`, { method: "PUT", body: JSON.stringify(item) });
 }
 
 export function deleteItem(id: string): Promise<void> {
-  return request(`/${id}`, { method: "DELETE" });
+  return request(`${BASE_URL}/${id}`, { method: "DELETE" });
 }

@@ -1,36 +1,34 @@
-import { categories } from "./categories";
-import type { Chip, OrganizingItem } from "../types";
+import type { Chip, Category, OrganizingItem } from "../types";
 
-export interface CategoryStats {
-  id: string;
-  label: string;
-  iconSrc?: string;
+export interface CategoryStats extends Category {
   itemCount: number;
   subcategories: string[];
   locations: string[];
   tags: (Chip & { count: number })[];
 }
 
-export function getCategoryStats(items: OrganizingItem[]): CategoryStats[] {
-  return categories
-    .filter((category) => category.id !== "all")
-    .map((category) => {
-      const categoryItems = items.filter(
-        (item) => item.category.label === category.label,
-      );
-      const tagMap = new Map<string, Chip & { count: number }>();
-      for (const item of categoryItems) {
-        if (!item.tag) continue;
-        const existing = tagMap.get(item.tag.label);
+export function getCategoryStats(
+  categories: Category[],
+  items: OrganizingItem[],
+): CategoryStats[] {
+  return categories.map((category) => {
+    const categoryItems = items.filter(
+      (item) => item.category.label === category.label,
+    );
+    const tagMap = new Map<string, Chip & { count: number }>();
+    for (const item of categoryItems) {
+      for (const tag of item.tags) {
+        const existing = tagMap.get(tag.label);
         if (existing) existing.count += 1;
-        else tagMap.set(item.tag.label, { ...item.tag, count: 1 });
+        else tagMap.set(tag.label, { ...tag, count: 1 });
       }
-      return {
-        ...category,
-        itemCount: categoryItems.length,
-        subcategories: Array.from(new Set(categoryItems.map((item) => item.subcategory))),
-        locations: Array.from(new Set(categoryItems.map((item) => item.location))),
-        tags: Array.from(tagMap.values()),
-      };
-    });
+    }
+    return {
+      ...category,
+      itemCount: categoryItems.length,
+      subcategories: Array.from(new Set(categoryItems.map((item) => item.subcategory))),
+      locations: Array.from(new Set(categoryItems.map((item) => item.location))),
+      tags: Array.from(tagMap.values()),
+    };
+  });
 }

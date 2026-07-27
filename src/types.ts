@@ -29,15 +29,30 @@ export interface OrganizingItem {
   iconColor: string;
   category: Chip;
   subcategory: string;
-  tag?: Chip;
+  quantity: number;
+  /** Same-origin URL of the item's photo, shown in place of the icon. */
+  imageURL?: string;
+  /** Optional dates in YYYY-MM-DD form (for editing). */
+  expiryDate?: string;
+  opensOn?: string;
+  tags: Chip[];
   status?: Chip;
   stats: StatEntry[];
   details: DetailRow[];
   notes: string;
 }
 
+/** What a modal changed, so parents refresh only the affected data. */
+export interface RefreshScope {
+  categories: boolean;
+  items: boolean;
+}
+
 export interface Category {
   id: string;
   label: string;
   iconSrc?: string;
+  /** Lucide icon name chosen in the category editor (used when no image exists). */
+  iconName?: string;
+  colour?: string;
 }

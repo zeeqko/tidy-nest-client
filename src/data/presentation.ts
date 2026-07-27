@@ -2,10 +2,12 @@ import {
   Beef,
   BookOpen,
   Calendar,
+  CalendarX,
   Footprints,
   MapPin,
   Milk,
   Package,
+  PackageOpen,
   RotateCcw,
   Shirt,
   ShoppingBag,
@@ -81,8 +83,13 @@ const tagChips: Record<string, Chip> = {
   Summer: { label: "Summer", bg: "#FFE9A8", fg: "#8A6A00" },
 };
 
-function tagChip(label: string): Chip {
-  return tagChips[label] ?? { label, bg: "#E7E2EE", fg: "#4A3F55" };
+export function tagChip(label: string, colour?: string): Chip {
+  return (
+    tagChips[label] ??
+    (colour
+      ? { label, bg: colour, fg: "#4A3F55" }
+      : { label, bg: "#E7E2EE", fg: "#4A3F55" })
+  );
 }
 
 function statusChip(label: string): Chip {
@@ -117,7 +124,11 @@ export function toOrganizingItem(item: ApiInventoryItem): OrganizingItem {
     iconColor: preset.iconColor,
     category: preset.chip,
     subcategory: item.subcategory,
-    tag: item.tag ? tagChip(item.tag) : undefined,
+    quantity: item.quantity,
+    imageURL: item.imageURL,
+    expiryDate: item.expiryDate,
+    opensOn: item.opensOn,
+    tags: (item.tags ?? []).map((tag) => tagChip(tag.name, tag.colour)),
     status: item.status ? statusChip(item.status) : undefined,
     stats: [
       { icon: Package, label: "Quantity", value: String(item.quantity), helper: item.subtitle },
@@ -126,6 +137,12 @@ export function toOrganizingItem(item: ApiInventoryItem): OrganizingItem {
     ],
     details: [
       { icon: MapPin, label: "Storage Location", value: item.location },
+      ...(item.opensOn
+        ? [{ icon: PackageOpen, label: "Open Date", value: formatDate(item.opensOn) }]
+        : []),
+      ...(item.expiryDate
+        ? [{ icon: CalendarX, label: "Expiry Date", value: formatDate(item.expiryDate) }]
+        : []),
       { icon: Calendar, label: "Added", value: formatDate(item.createdAt) },
       { icon: RotateCcw, label: "Last Updated", value: formatDate(item.updatedAt) },
     ],

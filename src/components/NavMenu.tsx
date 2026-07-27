@@ -1,5 +1,5 @@
 import type { LucideIcon } from "lucide-react";
-import { House, Boxes, Shapes, Settings2, CirclePlus, Settings } from "lucide-react";
+import { House, Boxes, Shapes, Settings2, Settings } from "lucide-react";
 import { useLocation, useNavigate } from "react-router-dom";
 
 interface NavMenuProps {
@@ -20,7 +20,6 @@ const menuItems: MenuItem[] = [
   { id: "all-items", label: "All Items", icon: Boxes, to: "/items" },
   { id: "all-categories", label: "All Categories", icon: Shapes, to: "/categories" },
   { id: "manage-categories", label: "Manage Categories", icon: Settings2 },
-  { id: "add-item", label: "Add Item", icon: CirclePlus },
   { id: "settings", label: "Settings", icon: Settings },
 ];
 
@@ -33,7 +32,7 @@ export function NavMenu({ open, onClose, onManageCategories }: NavMenuProps) {
   return (
     <>
       <div className="fixed inset-0 z-30" onClick={onClose} />
-      <div className="fixed top-[84px] left-12 z-40 flex w-[240px] flex-col gap-0.5 rounded-cute-m border border-cute-border bg-cute-surface p-2.5 shadow-[0_12px_28px_-6px_rgba(74,63,85,0.19)]">
+      <div className="fixed bottom-[calc(5.5rem+env(safe-area-inset-bottom))] left-5 z-40 flex w-[240px] flex-col gap-0.5 rounded-cute-m border border-cute-border bg-cute-surface p-2.5 shadow-[0_12px_28px_-6px_rgba(74,63,85,0.19)] sm:top-[84px] sm:bottom-auto sm:left-12">
         {menuItems.map((item) => {
           const Icon = item.icon;
           const isActive = item.to === location.pathname;

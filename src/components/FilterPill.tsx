@@ -5,22 +5,31 @@ interface FilterPillProps {
   active: boolean;
   onClick: () => void;
   icon?: ReactNode;
+  /** "md" = category-page subcategory tabs; "sm" = All Items filter chips. */
+  size?: "md" | "sm";
 }
 
-export function FilterPill({ label, active, onClick, icon }: FilterPillProps) {
+export function FilterPill({ label, active, onClick, icon, size = "sm" }: FilterPillProps) {
+  const shadow = "shadow-[0_1px_3.5px_-1px_rgba(0,0,0,0.06)]";
+  const padding =
+    size === "md"
+      ? "px-6 py-2.5"
+      : icon && !active
+        ? "py-1.5 pr-3.5 pl-1.5"
+        : "px-4 py-2";
+  const text = size === "md" ? "text-sm" : "text-xs";
+
   return (
     <button
       type="button"
       onClick={onClick}
-      className={
+      className={`flex items-center gap-1.5 rounded-full font-body transition ${text} ${padding} ${shadow} ${
         active
-          ? "flex items-center gap-2 rounded-full bg-cute-primary px-[18px] py-[9px] font-body text-[13px] font-semibold text-cute-primary-foreground transition"
-          : `flex items-center gap-2 rounded-full border border-cute-border bg-cute-surface font-body text-[13px] text-cute-text transition hover:bg-cute-surface-alt ${
-              icon ? "py-1.5 pr-4 pl-1.5" : "px-[18px] py-[9px]"
-            }`
-      }
+          ? "bg-cute-primary font-semibold text-cute-primary-foreground"
+          : "border border-cute-border bg-cute-surface font-medium text-cute-text hover:bg-cute-surface-alt"
+      }`}
     >
-      {icon}
+      {!active && icon}
       {label}
     </button>
   );

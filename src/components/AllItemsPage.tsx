@@ -1,26 +1,53 @@
 import { useMemo, useState } from "react";
 import { Header } from "./Header";
+import { MobileTopBar } from "./MobileTopBar";
 import { SearchBar } from "./SearchBar";
 import { CategoryFilters } from "./CategoryFilters";
 import { SubcategoryFilters } from "./SubcategoryFilters";
 import { ItemsGrid } from "./ItemsGrid";
 import { ItemDetailModal } from "./ItemDetailModal";
-import { categories } from "../data/categories";
+import { ItemFormModal } from "./ItemFormModal";
+import { ConfirmDeleteModal } from "./ConfirmDeleteModal";
+import { deleteItem } from "../api/inventory";
 import { useItems } from "../hooks/useItems";
+import { useCategories } from "../hooks/useCategories";
 import type { OrganizingItem } from "../types";
 
 export function AllItemsPage() {
-  const { items, loading, error } = useItems();
+  const { items, loading, error, refresh } = useItems();
+  const { categories, apiCategories } = useCategories();
   const [search, setSearch] = useState("");
   const [activeCategory, setActiveCategory] = useState("all");
   const [activeSubcategory, setActiveSubcategory] = useState("all");
   const [selectedItem, setSelectedItem] = useState<OrganizingItem | null>(null);
+  const [formOpen, setFormOpen] = useState(false);
+  const [editingItem, setEditingItem] = useState<OrganizingItem | null>(null);
+  const [deleteTarget, setDeleteTarget] = useState<OrganizingItem | null>(null);
 
   const activeCategoryLabel = categories.find((c) => c.id === activeCategory)?.label;
 
   const handleSelectCategory = (id: string) => {
     setActiveCategory(id);
     setActiveSubcategory("all");
+  };
+
+  const openCreate = () => {
+    setEditingItem(null);
+    setFormOpen(true);
+  };
+
+  const openEdit = (item: OrganizingItem) => {
+    setSelectedItem(null);
+    setEditingItem(item);
+    setFormOpen(true);
+  };
+
+  const confirmDelete = async () => {
+    if (!deleteTarget) return;
+    await deleteItem(deleteTarget.id);
+    setDeleteTarget(null);
+    setSelectedItem(null);
+    await refresh();
   };
 
   const subcategories = useMemo(() => {
@@ -48,11 +75,18 @@ export function AllItemsPage() {
   }, [items, search, activeCategory, activeCategoryLabel, activeSubcategory]);
 
   return (
-    <div className="min-h-screen w-full bg-cute-bg px-6 py-10 sm:px-10">
-      <div className="mx-auto flex w-full max-w-[1300px] flex-col gap-6">
-        <Header totalCount={items.length} />
+    <div className="w-full px-5 pt-2 pb-10 sm:px-10">
+      <div className="mx-auto flex w-full max-w-[1100px] flex-col gap-4 sm:gap-9">
+        <MobileTopBar title="All Items" backTo="/" />
+        <div className="hidden sm:block">
+          <Header totalCount={items.length} onAdd={openCreate} />
+        </div>
         <SearchBar value={search} onChange={setSearch} />
-        <CategoryFilters active={activeCategory} onSelect={handleSelectCategory} />
+        <CategoryFilters
+          categories={categories}
+          active={activeCategory}
+          onSelect={handleSelectCategory}
+        />
         <SubcategoryFilters
           subcategories={subcategories}
           active={activeSubcategory}
@@ -71,7 +105,28 @@ export function AllItemsPage() {
         )}
       </div>
       {selectedItem && (
-        <ItemDetailModal item={selectedItem} onClose={() => setSelectedItem(null)} />
+        <ItemDetailModal
+          item={selectedItem}
+          onClose={() => setSelectedItem(null)}
+          onEdit={openEdit}
+          onDelete={setDeleteTarget}
+        />
+      )}
+      {formOpen && (
+        <ItemFormModal
+          item={editingItem ?? undefined}
+          apiCategories={apiCategories}
+          onClose={() => setFormOpen(false)}
+          onSaved={refresh}
+        />
+      )}
+      {deleteTarget && (
+        <ConfirmDeleteModal
+          title={`Delete "${deleteTarget.name}"?`}
+          message="This removes the item from your inventory. This can't be undone."
+          onCancel={() => setDeleteTarget(null)}
+          onConfirm={confirmDelete}
+        />
       )}
     </div>
   );

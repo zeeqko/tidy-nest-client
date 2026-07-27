@@ -12,7 +12,7 @@ export function SearchBar({
   placeholder = "Search all your stuff...",
 }: SearchBarProps) {
   return (
-    <div className="flex w-full items-center gap-2.5 rounded-full border border-cute-border bg-cute-surface-alt px-5 py-3.5">
+    <div className="flex w-full items-center gap-2.5 rounded-full border border-cute-border bg-cute-surface px-[18px] py-3.5">
       <Search size={18} className="shrink-0 text-cute-text-muted" />
       <input
         type="text"

@@ -1,8 +1,9 @@
 import { useMemo, useState } from "react";
-import { Settings2, Plus } from "lucide-react";
+import { Settings2, Plus, Boxes } from "lucide-react";
 import { getCategoryStats } from "../data/categoryStats";
 import { useItems } from "../hooks/useItems";
 import { useCategories } from "../hooks/useCategories";
+import { EmptyState } from "./EmptyState";
 import { MobileTopBar } from "./MobileTopBar";
 import { SearchBar } from "./SearchBar";
 import { CategoryTile } from "./CategoryTile";
@@ -14,8 +15,8 @@ export function AllCategoriesPage() {
   const [manageOpen, setManageOpen] = useState(false);
   const [addOpen, setAddOpen] = useState(false);
 
-  const { items, refresh } = useItems();
-  const { categories, refresh: refreshCategories } = useCategories();
+  const { categories, apiCategories, loading, refresh: refreshCategories } = useCategories();
+  const { items, refresh } = useItems(apiCategories);
   const categoryStats = useMemo(
     () => getCategoryStats(categories, items),
     [categories, items],
@@ -44,37 +45,46 @@ export function AllCategoriesPage() {
             className="flex items-center gap-1.5 rounded-full border border-cute-border px-4 py-2.5 font-body text-sm font-medium text-cute-text transition hover:bg-cute-surface-alt"
           >
             <Settings2 size={16} />
-            Manage Categories
+            Edit Categories
           </button>
         </div>
 
         <SearchBar value={search} onChange={setSearch} placeholder="Search categories..." />
 
-        <div className="flex w-full flex-col gap-3 sm:grid sm:grid-cols-3 sm:gap-5 lg:grid-cols-4">
-          {filteredCategories.map((category) => (
-            <CategoryTile
-              key={category.id}
-              to={`/category/${category.id}`}
-              iconSrc={category.iconSrc}
-              iconName={category.iconName}
-              colour={category.colour}
-              label={category.label}
-              itemCount={category.itemCount}
-              subcategorySummary={category.subcategories.join(", ")}
-            />
-          ))}
-          <button
-            type="button"
-            onClick={() => setAddOpen(true)}
-            className="flex items-center justify-center gap-2 rounded-cute-l border-[1.5px] border-cute-border p-4 text-center transition hover:bg-cute-surface-alt sm:flex-col sm:gap-3 sm:p-5"
-          >
-            <Plus size={18} className="text-cute-text sm:hidden" />
-            <span className="hidden h-14 w-14 items-center justify-center rounded-full border border-cute-border bg-cute-surface text-cute-text sm:flex">
-              <Plus size={24} />
-            </span>
-            <span className="font-body text-sm font-semibold text-cute-text">Add Category</span>
-          </button>
-        </div>
+        {!loading && categories.length === 0 ? (
+          <EmptyState
+            icon={Boxes}
+            heading="No categories yet"
+            body="Create a category to start organizing your things."
+            action={{ label: "Add a category", onClick: () => setAddOpen(true) }}
+          />
+        ) : (
+          <div className="flex w-full flex-col gap-3 sm:grid sm:grid-cols-3 sm:gap-5 lg:grid-cols-4">
+            {filteredCategories.map((category) => (
+              <CategoryTile
+                key={category.id}
+                to={`/category/${category.id}`}
+                iconSrc={category.iconSrc}
+                iconName={category.iconName}
+                colour={category.colour}
+                label={category.label}
+                itemCount={category.itemCount}
+                subcategories={category.subcategories}
+              />
+            ))}
+            <button
+              type="button"
+              onClick={() => setAddOpen(true)}
+              className="flex items-center justify-center gap-2 rounded-cute-l border-[1.5px] border-cute-border p-4 text-center transition hover:bg-cute-surface-alt sm:flex-col sm:gap-3 sm:p-5"
+            >
+              <Plus size={18} className="text-cute-text sm:hidden" />
+              <span className="hidden h-14 w-14 items-center justify-center rounded-full border border-cute-border bg-cute-surface text-cute-text sm:flex">
+                <Plus size={24} />
+              </span>
+              <span className="font-body text-sm font-semibold text-cute-text">Add Category</span>
+            </button>
+          </div>
+        )}
       </div>
 
       {manageOpen && (

@@ -1,16 +1,22 @@
-import { useEffect, useMemo, useRef, useState } from "react";
-import { Camera, ChevronLeft, Image, X } from "lucide-react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { Camera, Image, X } from "lucide-react";
 import type { ApiCategory } from "../api/categories";
 import { createItem, updateItem } from "../api/inventory";
 import { uploadImage } from "../api/uploads";
 import { tagChip } from "../data/presentation";
 import type { OrganizingItem } from "../types";
+import { ModalShell } from "./ModalShell";
 import { OptionPicker } from "./OptionPicker";
 
 interface ItemFormModalProps {
   /** When set, the modal edits this item; otherwise it creates a new one. */
   item?: OrganizingItem;
-  /** Pre-selected category label for new items (e.g. on a category page). */
+  /**
+   * Pre-selected category id for new items (e.g. on a category page).
+   * Wins over `initialCategory` when both are given.
+   */
+  initialCategoryId?: number;
+  /** Pre-selected category label for new items — fallback when `initialCategoryId` isn't given. */
   initialCategory?: string;
   /** Already-loaded categories (with nested tags) — the modal does not refetch. */
   apiCategories: ApiCategory[];
@@ -22,11 +28,21 @@ interface ItemFormModalProps {
 const inputClass =
   "w-full rounded-cute-m border border-cute-border bg-cute-surface px-3.5 py-2.5 font-body text-sm text-cute-text outline-none transition focus:border-cute-primary";
 
-function Field({ label, children }: { label: string; children: React.ReactNode }) {
+function Field({
+  label,
+  helper,
+  children,
+}: {
+  label: string;
+  /** Optional one-line explanatory copy rendered under the input. */
+  helper?: string;
+  children: React.ReactNode;
+}) {
   return (
     <label className="flex w-full flex-col gap-1.5">
       <span className="font-body text-xs font-semibold text-cute-text-muted">{label}</span>
       {children}
+      {helper && <span className="font-body text-xs text-cute-text-muted">{helper}</span>}
     </label>
   );
 }
@@ -60,13 +76,22 @@ async function preparePhoto(file: File): Promise<{ blob: Blob; filename: string 
 
 export function ItemFormModal({
   item,
+  initialCategoryId,
   initialCategory,
   apiCategories,
   onClose,
   onSaved,
 }: ItemFormModalProps) {
   const [name, setName] = useState(item?.name ?? "");
-  const [category, setCategory] = useState(item?.category.label ?? initialCategory ?? "");
+  // Held by id (not label) so it survives duplicate/renamed category names;
+  // resolved to a name only when building the request payload below.
+  const [categoryId, setCategoryId] = useState<number | null>(() => {
+    if (item?.categoryId) {
+      const parsed = Number(item.categoryId);
+      return Number.isNaN(parsed) ? null : parsed;
+    }
+    return initialCategoryId ?? null;
+  });
   const [subcategory, setSubcategory] = useState(item?.subcategory ?? "");
   const [location, setLocation] = useState(item?.location ?? "");
   const [quantity, setQuantity] = useState(item?.quantity ?? 1);
@@ -74,8 +99,36 @@ export function ItemFormModal({
   const [notes, setNotes] = useState(item?.notes ?? "");
   const [opensOn, setOpensOn] = useState(item?.opensOn ?? "");
   const [expiryDate, setExpiryDate] = useState(item?.expiryDate ?? "");
+  // Manual "show optional fields" disclosure for categories that don't track
+  // dates by default (selectedCategory?.reminderOnExpiry === false). Defaults
+  // open when the item already carries a date (e.g. edit mode on a
+  // non-tracking category) so existing data is never hidden on open.
+  const [showDateFields, setShowDateFields] = useState(
+    () => Boolean(item?.opensOn || item?.expiryDate),
+  );
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const errorRef = useRef<HTMLParagraphElement>(null);
+
+  // Dropdown open state, lifted up from each OptionPicker so Escape can close
+  // just the open dropdown first, and the modal only on a second press.
+  const [subcategoryPickerOpen, setSubcategoryPickerOpen] = useState(false);
+  const [tagPickerOpen, setTagPickerOpen] = useState(false);
+
+  // Latest onClose, read from the history-guard effect below without making
+  // that effect (which must run only once per mount) depend on it.
+  const onCloseRef = useRef(onClose);
+  useEffect(() => {
+    onCloseRef.current = onClose;
+  }, [onClose]);
+
+  // History-guard bookkeeping for the effect below. These must be refs (not
+  // effect-local variables) so they survive React StrictMode's dev-only
+  // synchronous mount→cleanup→mount without double-pushing history or
+  // self-closing the modal.
+  const historyPushedRef = useRef(false);
+  const componentMountedRef = useRef(false);
+  const poppedByBrowserRef = useRef(false);
 
   // Existing photo URL (edit mode) and a newly picked file, which wins over it.
   const [imageURL, setImageURL] = useState(item?.imageURL ?? "");
@@ -105,29 +158,82 @@ export function ItemFormModal({
     setImageURL("");
   };
 
-  useEffect(() => {
-    const handleKeyDown = (event: KeyboardEvent) => {
-      if (event.key === "Escape") onClose();
-    };
-    document.addEventListener("keydown", handleKeyDown);
-    return () => document.removeEventListener("keydown", handleKeyDown);
-  }, [onClose]);
-
-  // Default the category select once categories load (create mode only).
-  useEffect(() => {
-    if (!category && apiCategories.length > 0) {
-      setCategory(initialCategory ?? apiCategories[0].name);
-    }
-  }, [apiCategories, category, initialCategory]);
-
-  const selectedCategory = useMemo(
-    () => apiCategories.find((c) => c.name === category),
-    [apiCategories, category],
+  // Escape closes only an open dropdown first (OptionPicker's own effect
+  // handles that); the modal itself only on a second press with no dropdown
+  // open (mirrors ManageCategoriesModal's `!pendingDelete && !editorOpen`
+  // guard) — enforced via ModalShell's `closeGuard`.
+  const closeGuard = useCallback(
+    () => !subcategoryPickerOpen && !tagPickerOpen,
+    [subcategoryPickerOpen, tagPickerOpen],
   );
 
-  const subcategorySuggestions = selectedCategory?.subCategories?.map((sc) => sc.name) ?? [];
+  // Scroll a freshly-set error into view — it's the last child of the
+  // scrollable body and otherwise invisible without a manual scroll.
+  useEffect(() => {
+    if (error) errorRef.current?.scrollIntoView({ behavior: "smooth", block: "nearest" });
+  }, [error]);
 
-  const tagSuggestions = selectedCategory?.tags?.map((t) => t.name) ?? [];
+  // Push a history entry while the modal is open so browser Back closes it
+  // instead of navigating away; on popstate, close (don't navigate) and skip
+  // the extra pop below since the browser already did it. On a genuine
+  // unmount (Save/Cancel/close), pop our own entry so none are left behind.
+  // The pop is deferred a tick, and guarded by componentMountedRef, so
+  // React's StrictMode dev-only synchronous mount→cleanup→mount (which would
+  // otherwise double-push then wrongly pop/self-close) settles safely: the
+  // second mount skips pushing again (historyPushedRef already true) and the
+  // deferred pop from the first mount's cleanup sees the component is mounted
+  // again and no-ops.
+  useEffect(() => {
+    componentMountedRef.current = true;
+    if (!historyPushedRef.current) {
+      window.history.pushState({ itemFormModal: true }, "");
+      historyPushedRef.current = true;
+    }
+    const handlePopState = () => {
+      poppedByBrowserRef.current = true;
+      onCloseRef.current();
+    };
+    window.addEventListener("popstate", handlePopState);
+    return () => {
+      componentMountedRef.current = false;
+      window.removeEventListener("popstate", handlePopState);
+      if (poppedByBrowserRef.current) return;
+      setTimeout(() => {
+        if (!componentMountedRef.current && historyPushedRef.current) {
+          historyPushedRef.current = false;
+          window.history.back();
+        }
+      }, 0);
+    };
+  }, []);
+
+  // Default the category once categories load (create mode only), and as a
+  // fallback for edit mode if the item's own category no longer exists.
+  useEffect(() => {
+    if (categoryId !== null || apiCategories.length === 0) return;
+    const fallbackId =
+      initialCategoryId ??
+      apiCategories.find((c) => c.name === initialCategory)?.id ??
+      apiCategories[0].id;
+    setCategoryId(fallbackId);
+  }, [apiCategories, categoryId, initialCategoryId, initialCategory]);
+
+  const selectedCategory = useMemo(
+    () => apiCategories.find((c) => c.id === categoryId) ?? null,
+    [apiCategories, categoryId],
+  );
+
+  const subcategorySuggestions = selectedCategory?.subCategories ?? [];
+
+  const tagSuggestions = selectedCategory?.tags ?? [];
+
+  // Food/Makeup-style categories track dates by default (reminderOnExpiry);
+  // everything else stays collapsed behind the disclosure until the user
+  // opts in. Switching categories preserves any values already typed — they
+  // just stop being shown if the newly selected category doesn't track
+  // dates by default and the disclosure hasn't been opened.
+  const remindsByDefault = Boolean(selectedCategory?.reminderOnExpiry);
+  const datesVisible = remindsByDefault || showDateFields;
 
   const handleSubmit = async (event: React.FormEvent) => {
     event.preventDefault();
@@ -146,7 +252,7 @@ export function ItemFormModal({
       }
       const payload = {
         name: name.trim(),
-        category,
+        category: selectedCategory?.name ?? "",
         subcategory: subcategory.trim(),
         location: location.trim(),
         quantity,
@@ -170,39 +276,34 @@ export function ItemFormModal({
   };
 
   return (
-    <div
-      className="fixed inset-0 z-[70] flex items-center justify-center bg-cute-bg pt-[env(safe-area-inset-top)] sm:bg-[#4A3F5555] sm:p-6 sm:pt-6"
-      onClick={(event) => {
-        if (event.target === event.currentTarget) onClose();
-      }}
+    <ModalShell
+      level="elevated"
+      onClose={onClose}
+      closeGuard={closeGuard}
+      as="form"
+      onSubmit={handleSubmit}
+      maxWidthClassName="sm:max-w-[520px]"
+      title={item ? "Edit Item" : "Add Item"}
+      footer={
+        <>
+          <button
+            type="button"
+            onClick={onClose}
+            className="hidden flex-1 items-center justify-center rounded-full border-[1.5px] border-cute-border px-4 py-[13px] font-body text-sm font-semibold text-cute-text transition hover:bg-cute-surface-alt sm:flex"
+          >
+            Cancel
+          </button>
+          <button
+            type="submit"
+            disabled={saving}
+            className="flex flex-1 items-center justify-center rounded-full bg-cute-primary px-4 py-[13px] font-body text-sm font-semibold text-cute-primary-foreground transition hover:brightness-105 disabled:opacity-60"
+          >
+            {saving ? "Saving…" : item ? "Save Changes" : "Add Item"}
+          </button>
+        </>
+      }
+      footerClassName="flex w-full shrink-0 gap-3 border-t border-cute-border bg-cute-surface px-5 pt-3.5 pb-[calc(1rem+env(safe-area-inset-bottom))] sm:border-0 sm:bg-transparent sm:px-8 sm:pt-0 sm:pb-8"
     >
-      <form
-        onSubmit={handleSubmit}
-        className="flex h-full w-full flex-col bg-cute-bg sm:h-auto sm:max-h-[90vh] sm:max-w-[520px] sm:rounded-cute-l sm:bg-cute-surface sm:shadow-[0_20px_50px_-10px_rgba(74,63,85,0.19)]"
-      >
-        <div className="flex w-full shrink-0 items-center gap-3.5 px-5 pt-5 pb-3 sm:justify-between sm:p-8 sm:pb-0">
-          <button
-            type="button"
-            onClick={onClose}
-            aria-label="Go back"
-            className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-cute-surface-alt text-cute-text transition hover:brightness-95 sm:hidden"
-          >
-            <ChevronLeft size={18} />
-          </button>
-          <h2 className="min-w-0 flex-1 truncate font-heading text-xl font-semibold text-cute-text sm:flex-none sm:text-[22px]">
-            {item ? "Edit Item" : "Add Item"}
-          </h2>
-          <button
-            type="button"
-            onClick={onClose}
-            aria-label="Close"
-            className="hidden h-9 w-9 items-center justify-center rounded-full bg-cute-surface-alt text-cute-text-muted transition hover:brightness-95 sm:flex"
-          >
-            <X size={16} />
-          </button>
-        </div>
-
-        <div className="flex min-h-0 w-full flex-1 flex-col gap-5 overflow-y-auto px-5 py-4 sm:p-8 sm:pt-5">
         <div className="flex w-full flex-col gap-1.5">
           <span className="font-body text-xs font-semibold text-cute-text-muted">
             Photo (optional)
@@ -294,14 +395,15 @@ export function ItemFormModal({
           <Field label="Category">
             <select
               className={inputClass}
-              value={category}
+              value={categoryId ?? ""}
               onChange={(e) => {
-                setCategory(e.target.value);
+                const id = Number(e.target.value);
+                setCategoryId(Number.isNaN(id) ? null : id);
                 setSubcategory("");
               }}
             >
               {apiCategories.map((c) => (
-                <option key={c.id} value={c.name}>
+                <option key={c.id} value={c.id}>
                   {c.name}
                 </option>
               ))}
@@ -314,6 +416,7 @@ export function ItemFormModal({
               placeholder="e.g. Dairy"
               noun="subcategory"
               onSelect={setSubcategory}
+              onOpenChange={setSubcategoryPickerOpen}
             />
           </Field>
         </div>
@@ -342,6 +445,7 @@ export function ItemFormModal({
                     : [...current, name],
                 )
               }
+              onOpenChange={setTagPickerOpen}
             />
           </Field>
         </div>
@@ -371,24 +475,48 @@ export function ItemFormModal({
           </div>
         )}
 
-        <div className="grid w-full grid-cols-2 gap-4">
-          <Field label="Open / First Use Date (optional)">
-            <input
-              className={inputClass}
-              type="date"
-              value={opensOn}
-              onChange={(e) => setOpensOn(e.target.value)}
-            />
-          </Field>
-          <Field label="Expiry Date (optional)">
-            <input
-              className={inputClass}
-              type="date"
-              value={expiryDate}
-              onChange={(e) => setExpiryDate(e.target.value)}
-            />
-          </Field>
-        </div>
+        {datesVisible ? (
+          <div className="flex w-full flex-col gap-2">
+            <div className="grid w-full grid-cols-2 gap-4">
+              <Field
+                label="Opened On"
+                helper="For items with a shelf life once opened, like food or makeup."
+              >
+                <input
+                  className={inputClass}
+                  type="date"
+                  value={opensOn}
+                  onChange={(e) => setOpensOn(e.target.value)}
+                />
+              </Field>
+              <Field label="Expiry Date (optional)">
+                <input
+                  className={inputClass}
+                  type="date"
+                  value={expiryDate}
+                  onChange={(e) => setExpiryDate(e.target.value)}
+                />
+              </Field>
+            </div>
+            {!remindsByDefault && (
+              <button
+                type="button"
+                onClick={() => setShowDateFields(false)}
+                className="self-start font-body text-xs font-semibold text-cute-text-muted underline-offset-2 hover:underline"
+              >
+                Hide date fields
+              </button>
+            )}
+          </div>
+        ) : (
+          <button
+            type="button"
+            onClick={() => setShowDateFields(true)}
+            className="self-start font-body text-xs font-semibold text-cute-primary underline-offset-2 hover:underline"
+          >
+            + Add an opened-on or expiry date
+          </button>
+        )}
 
         <Field label="Storage Location">
           <input
@@ -408,26 +536,11 @@ export function ItemFormModal({
           />
         </Field>
 
-        {error && <p className="font-body text-sm text-cute-danger">{error}</p>}
-        </div>
-
-        <div className="flex w-full shrink-0 gap-3 border-t border-cute-border bg-cute-surface px-5 pt-3.5 pb-[calc(1rem+env(safe-area-inset-bottom))] sm:border-0 sm:bg-transparent sm:px-8 sm:pt-0 sm:pb-8">
-          <button
-            type="button"
-            onClick={onClose}
-            className="hidden flex-1 items-center justify-center rounded-full border-[1.5px] border-cute-border px-4 py-[13px] font-body text-sm font-semibold text-cute-text transition hover:bg-cute-surface-alt sm:flex"
-          >
-            Cancel
-          </button>
-          <button
-            type="submit"
-            disabled={saving}
-            className="flex flex-1 items-center justify-center rounded-full bg-cute-primary px-4 py-[13px] font-body text-sm font-semibold text-cute-primary-foreground transition hover:brightness-105 disabled:opacity-60"
-          >
-            {saving ? "Saving…" : item ? "Save Changes" : "Add Item"}
-          </button>
-        </div>
-      </form>
-    </div>
+        {error && (
+          <p ref={errorRef} className="font-body text-sm text-cute-danger">
+            {error}
+          </p>
+        )}
+        </ModalShell>
   );
 }

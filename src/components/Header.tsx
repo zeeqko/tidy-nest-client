@@ -13,7 +13,7 @@ export function Header({ totalCount, onAdd }: HeaderProps) {
           All Items
         </h1>
         <p className="font-body text-sm text-cute-text-muted">
-          {totalCount} items across your home
+          {totalCount} {totalCount === 1 ? "item" : "items"} across your home
         </p>
       </div>
       <button

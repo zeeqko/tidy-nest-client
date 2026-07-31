@@ -18,6 +18,8 @@ export interface ApiCategory {
   tags: ApiTag[];
   itemCount: number;
   locations: string[];
+  /** Whether items in this category track an opened-on/expiry date by default (e.g. Food, Makeup). */
+  reminderOnExpiry: boolean;
 }
 
 export interface CategoryPayload {

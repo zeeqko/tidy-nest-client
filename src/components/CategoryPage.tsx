@@ -1,14 +1,14 @@
 import { useMemo, useState } from "react";
 import { Link, useParams } from "react-router-dom";
-import { Settings2, Plus } from "lucide-react";
+import { Settings2, Plus, Filter, PackageOpen } from "lucide-react";
 import { deleteItem } from "../api/inventory";
 import { useItems } from "../hooks/useItems";
 import { useCategories } from "../hooks/useCategories";
 import { CategoryBadge } from "./CategoryBadge";
+import { EmptyState } from "./EmptyState";
 import { FilterPill } from "./FilterPill";
 import { MobileTopBar } from "./MobileTopBar";
 import { ItemCard } from "./ItemCard";
-import { CompactItemCard } from "./ItemsGrid";
 import { ItemDetailModal } from "./ItemDetailModal";
 import { ItemFormModal } from "./ItemFormModal";
 import { ConfirmDeleteModal } from "./ConfirmDeleteModal";
@@ -18,13 +18,13 @@ import type { OrganizingItem } from "../types";
 export function CategoryPage() {
   const { categoryId } = useParams<{ categoryId: string }>();
 
-  const { items, loading, error, refresh } = useItems();
   const {
     categories,
     apiCategories,
     loading: categoriesLoading,
     refresh: refreshCategories,
   } = useCategories();
+  const { items, loading, error, refresh } = useItems(apiCategories);
   const category = categories.find((c) => c.id === categoryId);
 
   const [activeSubcategory, setActiveSubcategory] = useState("all");
@@ -50,14 +50,14 @@ export function CategoryPage() {
   };
 
   const categoryItems = useMemo(
-    () => items.filter((item) => item.category.label === category?.label),
+    () => items.filter((item) => item.categoryId === category?.id),
     [items, category],
   );
 
-  const subcategories = useMemo(
-    () => Array.from(new Set(categoryItems.map((item) => item.subcategory))),
-    [categoryItems],
-  );
+  // Derived from the category's own subcategory list (not from items present)
+  // so subcategories with zero items still show up in tile subtitles and
+  // filter pills.
+  const subcategories = category?.subcategories ?? [];
 
   const tags = useMemo(() => {
     const map = new Map<string, { label: string; bg: string; fg: string; count: number }>();
@@ -73,7 +73,7 @@ export function CategoryPage() {
 
   const filteredItems = categoryItems.filter((item) => {
     const matchesSubcategory =
-      activeSubcategory === "all" || item.subcategory === activeSubcategory;
+      activeSubcategory === "all" || item.subCategoryId === activeSubcategory;
     const matchesTag = activeTag === "all" || item.tags.some((tag) => tag.label === activeTag);
     return matchesSubcategory && matchesTag;
   });
@@ -93,34 +93,21 @@ export function CategoryPage() {
           to="/categories"
           className="font-body text-sm font-semibold text-cute-primary hover:underline"
         >
-          Back to All Categories
+          Back to Categories
         </Link>
       </div>
     );
   }
 
-  const subcategorySummary = subcategories.slice(0, 3).join(", ");
+  const subcategorySummary = subcategories
+    .slice(0, 3)
+    .map((sub) => sub.name)
+    .join(", ");
 
   return (
     <div className="w-full px-5 pt-2 pb-10 sm:px-10">
       <div className="mx-auto flex w-full max-w-[1200px] flex-col gap-5 sm:gap-7">
-        <MobileTopBar
-          title={category.label}
-          backTo="/categories"
-          action={
-            <button
-              type="button"
-              aria-label="Add item"
-              onClick={() => {
-                setEditingItem(null);
-                setFormOpen(true);
-              }}
-              className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-cute-primary text-cute-primary-foreground transition hover:brightness-105"
-            >
-              <Plus size={18} />
-            </button>
-          }
-        />
+        <MobileTopBar title={category.label} backTo="/categories" />
         <div className="flex w-full items-center gap-3.5 sm:hidden">
           <CategoryBadge
             iconSrc={category.iconSrc}
@@ -158,7 +145,7 @@ export function CategoryPage() {
               className="flex items-center gap-1.5 rounded-full border border-cute-border px-4 py-2.5 font-body text-sm font-medium text-cute-text transition hover:bg-cute-surface-alt"
             >
               <Settings2 size={16} />
-              Manage Categories
+              Edit Categories
             </button>
             <button
               type="button"
@@ -174,7 +161,7 @@ export function CategoryPage() {
           </div>
         </div>
 
-        {subcategories.length > 0 && (
+        {categoryItems.length > 0 && subcategories.length > 0 && (
           <div className="flex w-full flex-wrap items-center gap-2.5">
             <FilterPill
               label="All"
@@ -184,17 +171,17 @@ export function CategoryPage() {
             />
             {subcategories.map((sub) => (
               <FilterPill
-                key={sub}
-                label={sub}
+                key={sub.id}
+                label={sub.name}
                 size="md"
-                active={activeSubcategory === sub}
-                onClick={() => setActiveSubcategory(sub)}
+                active={activeSubcategory === sub.id}
+                onClick={() => setActiveSubcategory(sub.id)}
               />
             ))}
           </div>
         )}
 
-        {tags.length > 0 && (
+        {categoryItems.length > 0 && tags.length > 0 && (
           <div className="flex w-full flex-wrap items-center gap-2">
             <button
               type="button"
@@ -236,24 +223,55 @@ export function CategoryPage() {
           <p className="w-full py-10 text-center font-body text-sm text-cute-text-muted">
             Loading items…
           </p>
+        ) : categoryItems.length === 0 ? (
+          <EmptyState
+            icon={PackageOpen}
+            heading="Nothing here yet"
+            body={`Add your first item to start organizing ${category.label.toLowerCase()}.`}
+            action={{
+              label: "Add your first item",
+              onClick: () => {
+                setEditingItem(null);
+                setFormOpen(true);
+              },
+            }}
+          />
         ) : filteredItems.length === 0 ? (
-          <p className="w-full py-10 text-center font-body text-sm text-cute-text-muted">
-            No items match these filters.
-          </p>
+          <EmptyState
+            icon={Filter}
+            heading="No items match these filters"
+            body="Try a different subcategory or tag, or clear your filters to see everything."
+            action={{
+              label: "Clear filters",
+              onClick: () => {
+                setActiveSubcategory("all");
+                setActiveTag("all");
+              },
+            }}
+          />
         ) : (
           <>
-            {/* Mobile: compact 3-per-row grid, like the All Items (Mobile) design. */}
-            <div className="grid w-full grid-cols-3 gap-2.5 sm:hidden">
-              {filteredItems.map((item) => (
-                <CompactItemCard key={item.id} item={item} onSelect={setSelectedItem} />
-              ))}
-            </div>
-            {/* Desktop: large photo cards from the Category Modal design. */}
-            <div className="hidden w-full grid-cols-4 gap-6 sm:grid">
+            {/* Mobile: single-column row cards, like the Home category list. */}
+            <div className="flex w-full flex-col gap-2.5 sm:hidden">
               {filteredItems.map((item) => (
                 <ItemCard
                   key={item.id}
                   item={item}
+                  density="compact"
+                  chipMode="subcategory"
+                  onSelect={setSelectedItem}
+                  onEdit={openEdit}
+                  onDelete={setDeleteTarget}
+                />
+              ))}
+            </div>
+            {/* Desktop: large photo cards from the Category Modal design. */}
+            <div className="hidden w-full grid-cols-3 gap-6 sm:grid md:grid-cols-4 xl:grid-cols-5">
+              {filteredItems.map((item) => (
+                <ItemCard
+                  key={item.id}
+                  item={item}
+                  density="full"
                   chipMode="subcategory"
                   onSelect={setSelectedItem}
                   onEdit={openEdit}
@@ -285,6 +303,7 @@ export function CategoryPage() {
         <ItemFormModal
           item={editingItem ?? undefined}
           initialCategory={category.label}
+          initialCategoryId={Number(category.id)}
           apiCategories={apiCategories}
           onClose={() => setFormOpen(false)}
           onSaved={refresh}
@@ -292,10 +311,11 @@ export function CategoryPage() {
       )}
       {manageOpen && (
         <ManageCategoriesModal
+          apiCategories={apiCategories}
+          onChanged={refreshCategories}
           onClose={(changes) => {
             setManageOpen(false);
             if (changes.items) refresh();
-            if (changes.categories) refreshCategories();
           }}
         />
       )}

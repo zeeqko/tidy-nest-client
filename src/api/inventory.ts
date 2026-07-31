@@ -15,6 +15,10 @@ export interface ApiInventoryItem {
   subtitle: string;
   category: string;
   subcategory: string;
+  /** Same-shaped ids as Category.id/subcategories[].id; null when the item's
+   * subcategory (or its parent category) no longer exists. */
+  categoryId: string | null;
+  subCategoryId: string | null;
   location: string;
   quantity: number;
   tags: ApiItemTag[];
@@ -29,9 +33,11 @@ export interface ApiInventoryItem {
   updatedAt: string;
 }
 
+// Write path stays name-based: the backend resolves category/subcategory ids
+// from the name fields (see ensureSubCategory), so ids are response-only.
 export type NewInventoryItem = Omit<
   ApiInventoryItem,
-  "id" | "subtitle" | "status" | "createdAt" | "updatedAt"
+  "id" | "subtitle" | "status" | "createdAt" | "updatedAt" | "categoryId" | "subCategoryId"
 >;
 
 export function listItems(): Promise<ApiInventoryItem[]> {

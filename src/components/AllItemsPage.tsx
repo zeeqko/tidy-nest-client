@@ -14,8 +14,8 @@ import { useCategories } from "../hooks/useCategories";
 import type { OrganizingItem } from "../types";
 
 export function AllItemsPage() {
-  const { items, loading, error, refresh } = useItems();
   const { categories, apiCategories } = useCategories();
+  const { items, loading, error, refresh } = useItems(apiCategories);
   const [search, setSearch] = useState("");
   const [activeCategory, setActiveCategory] = useState("all");
   const [activeSubcategory, setActiveSubcategory] = useState("all");
@@ -74,6 +74,15 @@ export function AllItemsPage() {
     });
   }, [items, search, activeCategory, activeCategoryLabel, activeSubcategory]);
 
+  const hasActiveFilters =
+    search.trim().length > 0 || activeCategory !== "all" || activeSubcategory !== "all";
+
+  const clearFilters = () => {
+    setSearch("");
+    setActiveCategory("all");
+    setActiveSubcategory("all");
+  };
+
   return (
     <div className="w-full px-5 pt-2 pb-10 sm:px-10">
       <div className="mx-auto flex w-full max-w-[1100px] flex-col gap-4 sm:gap-9">
@@ -101,7 +110,11 @@ export function AllItemsPage() {
             Loading items…
           </p>
         ) : (
-          <ItemsGrid items={filteredItems} onSelect={setSelectedItem} />
+          <ItemsGrid
+            items={filteredItems}
+            onSelect={setSelectedItem}
+            onClearFilters={hasActiveFilters ? clearFilters : undefined}
+          />
         )}
       </div>
       {selectedItem && (

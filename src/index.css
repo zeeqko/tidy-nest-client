@@ -22,6 +22,12 @@
   --color-cute-success-foreground: #1f5c2a;
   --color-cute-danger: #ff7a90;
   --color-cute-danger-foreground: #7a1f33;
+  /* Genuinely distinct from cute-primary/cute-danger (both pastel pinks) —
+     a true, saturated red reserved for destructive actions (delete triggers
+     and the delete-confirm button), so filled-pink always reads as
+     "confirm" and this token always reads as "destroy". */
+  --color-cute-destructive: #dc2626;
+  --color-cute-destructive-foreground: #ffffff;
   --color-cute-info: #d6ecff;
   --color-cute-info-foreground: #1b4d89;
   --color-cute-warning: #ffe9a8;

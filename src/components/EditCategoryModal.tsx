@@ -1,5 +1,5 @@
-import { useEffect, useState } from "react";
-import { Check, ChevronLeft, Trash2, X } from "lucide-react";
+import { useCallback, useEffect, useRef, useState } from "react";
+import { Check, Trash2, X } from "lucide-react";
 import {
   attachTag,
   createCategory,
@@ -10,13 +10,14 @@ import {
   updateCategory,
   type ApiCategory,
 } from "../api/categories";
-import { toUiCategory } from "../data/categories";
+import { illustrationIcons } from "../data/categories";
 import { categoryIconOptions, defaultCategoryColour } from "../data/categoryIcons";
 import { tagChip } from "../data/presentation";
 import type { RefreshScope } from "../types";
 import { CategoryBadge } from "./CategoryBadge";
 import { ConfirmDeleteModal } from "./ConfirmDeleteModal";
 import { InlineAdd } from "./InlineAdd";
+import { ModalShell } from "./ModalShell";
 
 interface EditCategoryModalProps {
   /** When set, the modal edits this category; otherwise it creates a new one. */
@@ -80,11 +81,10 @@ export function EditCategoryModal({ category, onClose, onSaved }: EditCategoryMo
   const isEdit = category !== undefined;
 
   const [name, setName] = useState(category?.name ?? "");
-  // Only seed the picker with icons it actually offers; image-based categories
-  // (e.g. seeded 'food') start unselected so the image keeps showing.
-  const [icon, setIcon] = useState(() =>
-    category?.icon && categoryIconOptions[category.icon] ? category.icon : "",
-  );
+  // Seeds with whatever the category's icon actually is — an illustration
+  // key (e.g. "food") or a lucide key — since the picker below offers both
+  // kinds of choice and CategoryBadge resolves either by name.
+  const [icon, setIcon] = useState(category?.icon ?? "");
   const [colour, setColour] = useState(category?.colour ?? "");
   const [subs, setSubs] = useState<ChipState[]>(
     category?.subCategories.map((sub) => ({ id: sub.id, name: sub.name })) ?? [],
@@ -96,14 +96,24 @@ export function EditCategoryModal({ category, onClose, onSaved }: EditCategoryMo
   const [confirmingDelete, setConfirmingDelete] = useState(false);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const nameInputRef = useRef<HTMLInputElement>(null);
+  const errorRef = useRef<HTMLParagraphElement>(null);
 
+  // Escape/backdrop no-ops while the nested delete confirmation is open —
+  // enforced via ModalShell's `closeGuard`.
+  const closeGuard = useCallback(() => !confirmingDelete, [confirmingDelete]);
+
+  // Focus the name input in create mode without letting the browser scroll
+  // any ancestor (e.g. Edit Categories' list underneath) into view for it.
   useEffect(() => {
-    const handleKeyDown = (event: KeyboardEvent) => {
-      if (event.key === "Escape" && !confirmingDelete) onClose();
-    };
-    document.addEventListener("keydown", handleKeyDown);
-    return () => document.removeEventListener("keydown", handleKeyDown);
-  }, [onClose, confirmingDelete]);
+    if (!isEdit) nameInputRef.current?.focus({ preventScroll: true });
+  }, [isEdit]);
+
+  // The error text lives at the bottom of the scrollable body — bring it into
+  // view whenever it appears so it isn't silently invisible.
+  useEffect(() => {
+    if (error) errorRef.current?.scrollIntoView({ behavior: "smooth", block: "nearest" });
+  }, [error]);
 
   const addChip = (setter: typeof setSubs) => (chipName: string) => {
     setter((chips) =>
@@ -117,7 +127,6 @@ export function EditCategoryModal({ category, onClose, onSaved }: EditCategoryMo
     setter((chips) => chips.filter((c) => c !== chip));
   };
 
-  const iconSrc = category ? toUiCategory(category).iconSrc : undefined;
   const previewColour = colour || defaultCategoryColour;
 
   const handleSave = async () => {
@@ -170,69 +179,66 @@ export function EditCategoryModal({ category, onClose, onSaved }: EditCategoryMo
   };
 
   return (
-    <div
-      className="fixed inset-0 z-[70] flex items-center justify-center bg-cute-bg pt-[env(safe-area-inset-top)] sm:bg-[#4A3F5555] sm:p-6 sm:pt-6"
-      onClick={(event) => {
-        if (event.target === event.currentTarget) onClose();
-      }}
-    >
-      <div className="flex h-full w-full flex-col bg-cute-bg sm:h-auto sm:max-h-[90vh] sm:max-w-[460px] sm:rounded-cute-l sm:bg-cute-surface sm:shadow-[0_16px_40px_-8px_rgba(74,63,85,0.19)]">
-        <div className="flex w-full items-center gap-3.5 px-5 pt-5 pb-3 sm:items-start sm:justify-between sm:p-8 sm:pb-0">
-          <button
-            type="button"
-            onClick={onClose}
-            aria-label="Go back"
-            className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-cute-surface-alt text-cute-text transition hover:brightness-95 sm:hidden"
-          >
-            <ChevronLeft size={18} />
-          </button>
-          <div className="flex min-w-0 flex-1 flex-col sm:gap-1">
-            <h2 className="truncate font-heading text-xl font-semibold text-cute-text sm:text-[22px]">
-              {isEdit ? "Edit Category" : "Add Category"}
-            </h2>
-            <p className="hidden font-body text-[13px] text-cute-text-muted sm:block">
-              {isEdit
-                ? `Update how ${category?.name ?? name} looks and organizes your things`
-                : "Create a new category for your things"}
-            </p>
-          </div>
-          {isEdit && category && (
+    <>
+    <ModalShell
+      level="elevated"
+      onClose={onClose}
+      closeGuard={closeGuard}
+      maxWidthClassName="sm:max-w-[460px]"
+      bodyClassName="gap-[22px] px-5 py-4 sm:p-8 sm:pt-5"
+      title={isEdit ? "Edit Category" : "Add Category"}
+      subtitle={
+        isEdit
+          ? `Update how ${category?.name ?? name} looks and organizes your things`
+          : "Create a new category for your things"
+      }
+      footer={
+        <div className="flex w-full flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+          {isEdit && category ? (
             <button
               type="button"
               onClick={() => setConfirmingDelete(true)}
-              className="shrink-0 px-1 font-body text-[13px] font-semibold text-cute-danger transition hover:opacity-80 sm:hidden"
+              className="flex items-center gap-1.5 self-start px-1 py-2.5 font-body text-[13px] font-semibold text-cute-destructive transition hover:opacity-80"
             >
-              Delete
+              <Trash2 size={14} />
+              Delete Category
             </button>
+          ) : (
+            <span className="hidden sm:block" />
           )}
-          <button
-            type="button"
-            onClick={onClose}
-            aria-label="Close"
-            className="hidden h-9 w-9 items-center justify-center rounded-full bg-cute-surface-alt text-cute-text transition hover:brightness-95 sm:flex"
-          >
-            <X size={16} />
-          </button>
+          <div className="flex w-full items-center gap-3 sm:w-auto">
+            <button
+              type="button"
+              onClick={onClose}
+              className="hidden items-center justify-center rounded-full border border-cute-border px-4 py-2.5 font-body text-sm font-medium text-cute-text transition hover:bg-cute-surface-alt sm:flex"
+            >
+              Cancel
+            </button>
+            <button
+              type="button"
+              onClick={handleSave}
+              disabled={saving}
+              className="flex flex-1 items-center justify-center gap-1.5 rounded-full bg-cute-primary px-4 py-[13px] font-body text-sm font-semibold text-cute-primary-foreground transition hover:brightness-105 disabled:opacity-60 sm:flex-none sm:py-2.5"
+            >
+              <Check size={16} />
+              {saving ? "Saving…" : isEdit ? "Save Changes" : "Create Category"}
+            </button>
+          </div>
         </div>
-
-        <div className="flex w-full flex-1 flex-col gap-[22px] overflow-y-auto px-5 py-4 sm:flex-none sm:p-8 sm:pt-5">
+      }
+    >
         <div className="flex w-full flex-col items-center gap-1.5">
-          <CategoryBadge
-            iconSrc={icon ? undefined : iconSrc}
-            iconName={icon || undefined}
-            colour={previewColour}
-            size={88}
-          />
+          <CategoryBadge iconName={icon || undefined} colour={previewColour} size={88} />
           <p className="font-body text-xs text-cute-text-muted">Live Preview</p>
         </div>
 
         <label className="flex w-full flex-col gap-1.5">
           <FieldLabel>Category Name</FieldLabel>
           <input
+            ref={nameInputRef}
             value={name}
             onChange={(e) => setName(e.target.value)}
             placeholder="e.g. Food"
-            autoFocus={!isEdit}
             className="w-full rounded-full border border-cute-border bg-cute-surface-alt px-[22px] py-4 font-body text-sm text-cute-text outline-none transition focus:border-cute-primary"
           />
         </label>
@@ -240,18 +246,23 @@ export function EditCategoryModal({ category, onClose, onSaved }: EditCategoryMo
         <div className="flex w-full flex-col gap-2.5">
           <FieldLabel>Icon</FieldLabel>
           <div className="flex flex-wrap items-center gap-[9px]">
-            {iconSrc && (
-              <button
-                type="button"
-                aria-label="Keep category image"
-                onClick={() => setIcon("")}
-                className={`flex h-[38px] w-[38px] items-center justify-center overflow-hidden rounded-full transition ${
-                  icon === "" ? "ring-2 ring-cute-text" : "opacity-70 hover:opacity-100"
-                }`}
-              >
-                <img src={iconSrc} alt="" className="h-full w-full object-cover" />
-              </button>
-            )}
+            {Object.entries(illustrationIcons).map(([iconName, src]) => {
+              const selected = icon === iconName;
+              return (
+                <button
+                  key={iconName}
+                  type="button"
+                  aria-label={`Illustration ${iconName}`}
+                  onClick={() => setIcon(iconName)}
+                  className={`flex h-[38px] w-[38px] items-center justify-center overflow-hidden rounded-full transition ${
+                    selected ? "ring-2 ring-cute-text" : "opacity-70 hover:opacity-100"
+                  }`}
+                >
+                  <img src={src} alt="" className="h-full w-full object-cover" />
+                </button>
+              );
+            })}
+            <span className="h-[26px] w-px shrink-0 bg-cute-border" aria-hidden="true" />
             {Object.entries(categoryIconOptions).map(([iconName, Icon]) => {
               const selected = icon === iconName;
               return (
@@ -325,57 +336,32 @@ export function EditCategoryModal({ category, onClose, onSaved }: EditCategoryMo
           </div>
         </div>
 
-        {error && <p className="font-body text-sm text-cute-danger">{error}</p>}
-        </div>
-
-        <div className="w-full border-t border-cute-border bg-cute-surface px-5 pt-3.5 pb-[calc(1rem+env(safe-area-inset-bottom))] sm:border-0 sm:bg-transparent sm:px-8 sm:pt-0 sm:pb-8">
-          <div className="flex w-full items-center justify-between">
-            {isEdit && category ? (
-              <button
-                type="button"
-                onClick={() => setConfirmingDelete(true)}
-                className="hidden items-center gap-1.5 px-1 py-2.5 font-body text-[13px] font-semibold text-cute-danger transition hover:opacity-80 sm:flex"
-              >
-                <Trash2 size={14} />
-                Delete Category
-              </button>
-            ) : (
-              <span className="hidden sm:block" />
-            )}
-            <div className="flex w-full items-center gap-3 sm:w-auto">
-              <button
-                type="button"
-                onClick={onClose}
-                className="hidden items-center justify-center rounded-full border border-cute-border px-4 py-2.5 font-body text-sm font-medium text-cute-text transition hover:bg-cute-surface-alt sm:flex"
-              >
-                Cancel
-              </button>
-              <button
-                type="button"
-                onClick={handleSave}
-                disabled={saving}
-                className="flex flex-1 items-center justify-center gap-1.5 rounded-full bg-cute-primary px-4 py-[13px] font-body text-sm font-semibold text-cute-primary-foreground transition hover:brightness-105 disabled:opacity-60 sm:flex-none sm:py-2.5"
-              >
-                <Check size={16} />
-                {saving ? "Saving…" : isEdit ? "Save Changes" : "Create Category"}
-              </button>
-            </div>
-          </div>
-        </div>
-      </div>
+        {error && (
+          <p ref={errorRef} className="font-body text-sm text-cute-danger">
+            {error}
+          </p>
+        )}
+      </ModalShell>
+      {/* Rendered as a sibling, not nested, so its own ModalShell overlay
+          (level="alert") paints above this one at the shared z-scale. */}
       {confirmingDelete && category && (
         <ConfirmDeleteModal
           title={`Delete "${category.name}"?`}
           message="Its subcategories are removed too; items keep existing but lose this category."
           onCancel={() => setConfirmingDelete(false)}
           onConfirm={async () => {
-            await deleteCategory(category.id);
-            setConfirmingDelete(false);
-            onSaved({ categories: true, items: true });
-            onClose();
+            try {
+              await deleteCategory(category.id);
+              setConfirmingDelete(false);
+              onSaved({ categories: true, items: true });
+              onClose();
+            } catch (err) {
+              setError(err instanceof Error ? err.message : "Failed to delete category");
+              setConfirmingDelete(false);
+            }
           }}
         />
       )}
-    </div>
+    </>
   );
 }

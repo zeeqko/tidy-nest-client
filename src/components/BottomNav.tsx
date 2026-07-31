@@ -4,6 +4,7 @@ import { useLocation, useNavigate } from "react-router-dom";
 interface BottomNavProps {
   onAddItem: () => void;
   onMenu: () => void;
+  menuOpen?: boolean;
 }
 
 interface TabProps {
@@ -11,13 +12,17 @@ interface TabProps {
   icon: LucideIcon;
   active?: boolean;
   onClick: () => void;
+  ariaExpanded?: boolean;
+  ariaHasPopup?: "menu";
 }
 
-function Tab({ label, icon: Icon, active, onClick }: TabProps) {
+function Tab({ label, icon: Icon, active, onClick, ariaExpanded, ariaHasPopup }: TabProps) {
   return (
     <button
       type="button"
       onClick={onClick}
+      aria-expanded={ariaExpanded}
+      aria-haspopup={ariaHasPopup}
       className={`flex flex-1 flex-col items-center gap-[3px] py-1 font-body text-[11px] transition ${
         active ? "font-semibold text-cute-primary" : "text-cute-text-muted"
       }`}
@@ -29,7 +34,7 @@ function Tab({ label, icon: Icon, active, onClick }: TabProps) {
 }
 
 /** Mobile-only bottom navigation (per the mobile designs in UI.pen). */
-export function BottomNav({ onAddItem, onMenu }: BottomNavProps) {
+export function BottomNav({ onAddItem, onMenu, menuOpen }: BottomNavProps) {
   const navigate = useNavigate();
   const { pathname } = useLocation();
 
@@ -51,12 +56,18 @@ export function BottomNav({ onAddItem, onMenu }: BottomNavProps) {
         <Plus size={24} />
       </button>
       <Tab
-        label="Spaces"
+        label="Categories"
         icon={Shapes}
         active={pathname.startsWith("/categor")}
         onClick={() => navigate("/categories")}
       />
-      <Tab label="Menu" icon={Menu} onClick={onMenu} />
+      <Tab
+        label="Menu"
+        icon={Menu}
+        onClick={onMenu}
+        ariaExpanded={menuOpen ?? false}
+        ariaHasPopup="menu"
+      />
     </nav>
   );
 }

@@ -5,14 +5,14 @@ interface DetailActionsProps {
   onDelete?: () => void;
 }
 
-/** Edit first on mobile, Delete first on desktop (per the two Item Detail designs). */
+/** Edit leads (primary slot), Delete trails (non-primary slot) — same order at every breakpoint. */
 export function DetailActions({ onEdit, onDelete }: DetailActionsProps) {
   return (
     <div className="flex w-full gap-2.5 sm:gap-3">
       <button
         type="button"
         onClick={onEdit}
-        className="order-1 flex flex-1 items-center justify-center gap-1.5 rounded-full bg-cute-primary px-4 py-[13px] font-body text-sm font-semibold text-cute-primary-foreground transition hover:brightness-105 sm:order-2"
+        className="flex flex-1 items-center justify-center gap-1.5 rounded-full bg-cute-primary px-4 py-[13px] font-body text-sm font-semibold text-cute-primary-foreground transition hover:brightness-105"
       >
         <Pencil size={16} />
         Edit Item
@@ -20,7 +20,7 @@ export function DetailActions({ onEdit, onDelete }: DetailActionsProps) {
       <button
         type="button"
         onClick={onDelete}
-        className="order-2 flex flex-1 items-center justify-center gap-1.5 rounded-full border-[1.5px] border-cute-danger bg-cute-surface px-4 py-[13px] font-body text-sm font-semibold text-cute-danger transition hover:bg-cute-danger/10 sm:order-1"
+        className="flex flex-1 items-center justify-center gap-1.5 rounded-full border-[1.5px] border-cute-destructive bg-cute-surface px-4 py-[13px] font-body text-sm font-semibold text-cute-destructive transition hover:bg-cute-destructive/10"
       >
         <Trash2 size={16} />
         Delete

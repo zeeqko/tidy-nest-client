@@ -15,7 +15,9 @@ import {
   Utensils,
   type LucideIcon,
 } from "lucide-react";
+import type { ApiCategory } from "../api/categories";
 import type { ApiInventoryItem } from "../api/inventory";
+import { categoryIconOptions } from "./categoryIcons";
 import type { Chip, OrganizingItem } from "../types";
 
 interface CategoryPreset {
@@ -25,38 +27,42 @@ interface CategoryPreset {
   iconColor: string;
 }
 
-const categoryPresets: Record<string, CategoryPreset> = {
-  Food: {
+// Keyed by the six seeded categories' stable `icon` value (not their display
+// name), so renaming a seeded category — "Food" to "Groceries" — keeps its
+// preset instead of falling through to fallbackPreset. A category's `icon`
+// only changes if the user explicitly re-picks one in the editor.
+const illustrationPresets: Record<string, CategoryPreset> = {
+  food: {
     chip: { label: "Food", bg: "#FFD873", fg: "#6B4F00" },
     icon: Utensils,
     iconBg: "#FFD87340",
     iconColor: "#6B4F00",
   },
-  Clothes: {
+  clothes: {
     chip: { label: "Clothes", bg: "#C9B6FF", fg: "#4A3F66" },
     icon: Shirt,
     iconBg: "#C9B6FF33",
     iconColor: "#4A3F66",
   },
-  Makeup: {
+  makeup: {
     chip: { label: "Makeup", bg: "#FF7A90", fg: "#7A1F33" },
     icon: Sparkles,
     iconBg: "#FF7A9022",
     iconColor: "#7A1F33",
   },
-  Shoes: {
+  shoes: {
     chip: { label: "Shoes", bg: "#FF8FAB", fg: "#FFFFFF" },
     icon: Footprints,
     iconBg: "#FF8FAB26",
     iconColor: "#FFFFFF",
   },
-  Bags: {
+  bags: {
     chip: { label: "Bags", bg: "#B8EFC0", fg: "#1F5C2A" },
     icon: ShoppingBag,
     iconBg: "#B8EFC055",
     iconColor: "#1F5C2A",
   },
-  Books: {
+  books: {
     chip: { label: "Books", bg: "#6B4F00", fg: "#FFFFFF" },
     icon: BookOpen,
     iconBg: "#6B4F0022",
@@ -70,6 +76,22 @@ const fallbackPreset: CategoryPreset = {
   iconBg: "#E7E2EE66",
   iconColor: "#4A3F55",
 };
+
+/** Builds a preset from a user-created category's own colour/icon, so it
+ *  reads as deliberate rather than always falling to the grey fallback. */
+function presetFromCategory(category: ApiCategory): CategoryPreset {
+  const illustration = category.icon ? illustrationPresets[category.icon] : undefined;
+  if (illustration) return illustration;
+
+  const icon = (category.icon && categoryIconOptions[category.icon]) || Package;
+  const bg = category.colour ?? fallbackPreset.chip.bg;
+  return {
+    chip: { label: category.name, bg, fg: fallbackPreset.chip.fg },
+    icon,
+    iconBg: `${bg}40`,
+    iconColor: fallbackPreset.chip.fg,
+  };
+}
 
 const subcategoryIcons: Record<string, LucideIcon> = {
   Dairy: Milk,
@@ -107,12 +129,22 @@ function formatDate(iso: string): string {
   });
 }
 
-/** Maps a backend inventory item onto the UI's presentation shape. */
-export function toOrganizingItem(item: ApiInventoryItem): OrganizingItem {
-  const preset = categoryPresets[item.category] ?? {
-    ...fallbackPreset,
-    chip: { ...fallbackPreset.chip, label: item.category || "Other" },
-  };
+/** Maps a backend inventory item onto the UI's presentation shape. `categories`
+ *  (the caller's already-loaded list) resolves the item's category by id to
+ *  get its current colour/icon — falls back to a plain grey preset (labeled
+ *  from the item's own `category` name) only when the category can't be
+ *  found at all, e.g. it was since deleted. */
+export function toOrganizingItem(
+  item: ApiInventoryItem,
+  categories: ApiCategory[] = [],
+): OrganizingItem {
+  const category = categories.find((c) => String(c.id) === item.categoryId);
+  // Always show the category's current name, even when its preset comes from
+  // a hardcoded illustration entry keyed by a stable icon string that
+  // doesn't change on rename.
+  const preset = category
+    ? { ...presetFromCategory(category), chip: { ...presetFromCategory(category).chip, label: category.name } }
+    : { ...fallbackPreset, chip: { ...fallbackPreset.chip, label: item.category || "Other" } };
 
   return {
     id: item.id,
@@ -124,6 +156,8 @@ export function toOrganizingItem(item: ApiInventoryItem): OrganizingItem {
     iconColor: preset.iconColor,
     category: preset.chip,
     subcategory: item.subcategory,
+    categoryId: item.categoryId,
+    subCategoryId: item.subCategoryId,
     quantity: item.quantity,
     imageURL: item.imageURL,
     expiryDate: item.expiryDate,

@@ -1,20 +1,30 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Menu, User, LogOut } from "lucide-react";
-import { useNavigate } from "react-router-dom";
+import { Link, useNavigate } from "react-router-dom";
 import { logout } from "../api/auth";
 import { useCurrentUser } from "./RequireAuth";
 
 interface HomeTopBarProps {
   onMenuClick: () => void;
+  menuOpen?: boolean;
   className?: string;
 }
 
-export function HomeTopBar({ onMenuClick, className }: HomeTopBarProps) {
+export function HomeTopBar({ onMenuClick, menuOpen, className }: HomeTopBarProps) {
   const user = useCurrentUser();
   const navigate = useNavigate();
   const [accountMenuOpen, setAccountMenuOpen] = useState(false);
   const [loggingOut, setLoggingOut] = useState(false);
   const initial = user.name.trim().charAt(0).toUpperCase();
+
+  useEffect(() => {
+    if (!accountMenuOpen) return;
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") setAccountMenuOpen(false);
+    };
+    document.addEventListener("keydown", handleKeyDown);
+    return () => document.removeEventListener("keydown", handleKeyDown);
+  }, [accountMenuOpen]);
 
   const handleLogout = async () => {
     if (loggingOut) return;
@@ -36,11 +46,18 @@ export function HomeTopBar({ onMenuClick, className }: HomeTopBarProps) {
           type="button"
           onClick={onMenuClick}
           aria-label="Open menu"
+          aria-expanded={menuOpen ?? false}
+          aria-haspopup="menu"
           className="flex h-10 w-10 items-center justify-center rounded-full bg-cute-surface-alt text-cute-text transition hover:brightness-95"
         >
           <Menu size={18} />
         </button>
-        <span className="font-heading text-2xl font-semibold text-cute-primary">Tidy Nest</span>
+        <Link
+          to="/"
+          className="font-heading text-2xl font-semibold text-cute-primary transition hover:brightness-95"
+        >
+          Tidy Nest
+        </Link>
       </div>
       <div className="relative">
         <button
@@ -54,7 +71,10 @@ export function HomeTopBar({ onMenuClick, className }: HomeTopBarProps) {
         </button>
         {accountMenuOpen && (
           <>
-            <div className="fixed inset-0 z-30" onClick={() => setAccountMenuOpen(false)} />
+            <div
+              className="fixed inset-0 z-30 bg-[#4A3F5555]"
+              onClick={() => setAccountMenuOpen(false)}
+            />
             <div className="absolute right-0 top-12 z-40 flex w-[200px] flex-col gap-0.5 rounded-cute-m border border-cute-border bg-cute-surface p-2.5 shadow-[0_12px_28px_-6px_rgba(74,63,85,0.19)]">
               <div className="border-b border-cute-border px-3 pt-1 pb-2.5">
                 <p className="truncate font-heading text-sm font-semibold text-cute-text">

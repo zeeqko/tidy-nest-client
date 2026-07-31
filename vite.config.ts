@@ -10,6 +10,10 @@ export default defineConfig({
     tailwindcss(),
     VitePWA({
       registerType: 'autoUpdate',
+      devOptions: {
+        enabled: true,
+        type: 'module',
+      },
       includeAssets: ['favicon.svg', 'apple-touch-icon.png'],
       manifest: {
         name: 'Tidy Nest',
@@ -20,9 +24,9 @@ export default defineConfig({
         background_color: '#FFF8F3',
         theme_color: '#FFF8F3',
         icons: [
-          { src: '/pwa-192.png', sizes: '192x192', type: 'image/png' },
-          { src: '/pwa-512.png', sizes: '512x512', type: 'image/png' },
-          { src: '/pwa-512.png', sizes: '512x512', type: 'image/png', purpose: 'maskable' },
+          { src: '/pwa-192.png', sizes: '192x192', type: 'image/png', purpose: 'any' },
+          { src: '/pwa-512.png', sizes: '512x512', type: 'image/png', purpose: 'any' },
+          { src: '/pwa-512-maskable.png', sizes: '512x512', type: 'image/png', purpose: 'maskable' },
         ],
       },
       workbox: {
@@ -30,15 +34,18 @@ export default defineConfig({
         // The app shell works offline; API data always goes to the network
         // (falling back to nothing rather than stale caches).
         navigateFallbackDenylist: [/^\/api\//, /^\/uploads\//],
+        // Workbox matches urlPattern regexes against the full href, so these
+        // rules test the pathname of same-origin requests instead.
         runtimeCaching: [
           {
-            urlPattern: /^\/api\//,
+            urlPattern: ({ url, sameOrigin }) => sameOrigin && url.pathname.startsWith('/api/'),
             handler: 'NetworkOnly',
           },
           {
-            // Item photos: immutable random filenames, cache aggressively
-            // so cards render offline once a photo has been seen.
-            urlPattern: /^\/uploads\//,
+            // Item photos: the backend streams these out of R2, and the random
+            // filenames are immutable, so cache them aggressively — cards then
+            // render offline, and repeat views skip the round trip to the bucket.
+            urlPattern: ({ url, sameOrigin }) => sameOrigin && url.pathname.startsWith('/uploads/'),
             handler: 'CacheFirst',
             options: {
               cacheName: 'item-photos',

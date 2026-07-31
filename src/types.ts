@@ -29,6 +29,10 @@ export interface OrganizingItem {
   iconColor: string;
   category: Chip;
   subcategory: string;
+  /** Same-shaped ids as Category.id/subcategories[].id; null when the item's
+   * subcategory (or its parent category) no longer exists. */
+  categoryId: string | null;
+  subCategoryId: string | null;
   quantity: number;
   /** Same-origin URL of the item's photo, shown in place of the icon. */
   imageURL?: string;
@@ -55,4 +59,5 @@ export interface Category {
   /** Lucide icon name chosen in the category editor (used when no image exists). */
   iconName?: string;
   colour?: string;
+  subcategories: { id: string; name: string }[];
 }

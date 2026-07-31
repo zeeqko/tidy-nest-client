@@ -1,24 +1,33 @@
-import { useEffect, useRef, useState } from "react";
-import { X, Pencil, Trash2, Plus, ChevronDown, ChevronLeft, ChevronUp } from "lucide-react";
+import { useCallback, useEffect, useRef, useState } from "react";
+import { X, Pencil, Trash2, Plus, ChevronDown, ChevronUp } from "lucide-react";
 import {
   attachTag,
   deleteCategory,
   deleteSubCategory,
   detachTag,
   createSubCategory,
+  listCategories,
   type ApiCategory,
 } from "../api/categories";
 import { toUiCategory } from "../data/categories";
-import { useCategories } from "../hooks/useCategories";
 import type { RefreshScope } from "../types";
 import { CategoryBadge } from "./CategoryBadge";
 import { ConfirmDeleteModal } from "./ConfirmDeleteModal";
 import { EditCategoryModal } from "./EditCategoryModal";
 import { InlineAdd } from "./InlineAdd";
+import { ModalShell } from "./ModalShell";
 
 interface ManageCategoriesModalProps {
   /** Receives what changed while the modal was open, for selective refresh. */
   onClose: (changes: RefreshScope) => void;
+  /**
+   * Parent-supplied categories (contract C1). When provided, the modal renders
+   * these instead of self-fetching, and calls `onChanged()` after each mutation
+   * instead of refetching itself. When omitted, today's self-fetching behaviour
+   * is preserved so existing callers need no changes.
+   */
+  apiCategories?: ApiCategory[];
+  onChanged?: () => void | Promise<void>;
 }
 
 interface PendingDelete {
@@ -29,25 +38,60 @@ interface PendingDelete {
   affectsItems?: boolean;
 }
 
-export function ManageCategoriesModal({ onClose }: ManageCategoriesModalProps) {
-  const { apiCategories, refresh } = useCategories();
+export function ManageCategoriesModal({
+  onClose,
+  apiCategories: apiCategoriesProp,
+  onChanged,
+}: ManageCategoriesModalProps) {
+  const controlled = apiCategoriesProp !== undefined;
+  // Self-fetch fallback, only used when the parent doesn't supply apiCategories.
+  const [fetchedCategories, setFetchedCategories] = useState<ApiCategory[]>([]);
+  const selfRefresh = useCallback(async () => {
+    try {
+      setFetchedCategories(await listCategories());
+    } catch {
+      // Swallowed to match the previous self-fetching hook's behaviour, which
+      // never surfaced load failures through this modal's own error banner.
+    }
+  }, []);
+  useEffect(() => {
+    if (!controlled) selfRefresh();
+    // Intentionally run once per mount for the self-fetching fallback; whether
+    // this instance is controlled doesn't change over its lifetime.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+  const apiCategories = controlled ? apiCategoriesProp : fetchedCategories;
+
   const [expandedId, setExpandedId] = useState<number | null>(null);
   const [editingCategory, setEditingCategory] = useState<ApiCategory | null>(null);
   const [addingCategory, setAddingCategory] = useState(false);
   const [pendingDelete, setPendingDelete] = useState<PendingDelete | null>(null);
   const [error, setError] = useState<string | null>(null);
   const changes = useRef<RefreshScope>({ categories: false, items: false });
+  const listRef = useRef<HTMLDivElement>(null);
+  const savedScrollTop = useRef<number | null>(null);
 
   const editorOpen = editingCategory !== null || addingCategory;
   const close = () => onClose(changes.current);
 
+  // Opening the editor mounts EditCategoryModal, which autofocuses its name
+  // input; capture this list's scroll position beforehand and restore it
+  // right after mount so any browser auto-scroll-into-view doesn't leave the
+  // list jumped to a different position than where the user opened it from.
+  const openEditor = (open: () => void) => {
+    savedScrollTop.current = listRef.current?.scrollTop ?? null;
+    open();
+  };
+
   useEffect(() => {
-    const handleKeyDown = (event: KeyboardEvent) => {
-      if (event.key === "Escape" && !pendingDelete && !editorOpen) onClose(changes.current);
-    };
-    document.addEventListener("keydown", handleKeyDown);
-    return () => document.removeEventListener("keydown", handleKeyDown);
-  }, [onClose, pendingDelete, editorOpen]);
+    if (editorOpen && savedScrollTop.current !== null && listRef.current) {
+      listRef.current.scrollTop = savedScrollTop.current;
+    }
+  }, [editorOpen]);
+
+  // Escape/backdrop no-ops while a delete confirmation or the category
+  // editor is open — enforced via ModalShell's `closeGuard`.
+  const closeGuard = useCallback(() => !pendingDelete && !editorOpen, [pendingDelete, editorOpen]);
 
   const run = async (action: () => Promise<unknown>, affectsItems = false) => {
     try {
@@ -55,48 +99,28 @@ export function ManageCategoriesModal({ onClose }: ManageCategoriesModalProps) {
       await action();
       changes.current.categories = true;
       if (affectsItems) changes.current.items = true;
-      await refresh();
+      if (controlled) {
+        await onChanged?.();
+      } else {
+        await selfRefresh();
+      }
     } catch (err) {
       setError(err instanceof Error ? err.message : "Something went wrong");
+      throw err;
     }
   };
 
   return (
-    <div
-      className="fixed inset-0 z-50 flex items-center justify-center bg-cute-bg pt-[env(safe-area-inset-top)] sm:bg-[#4A3F5555] sm:p-6 sm:pt-6"
-      onClick={(event) => {
-        if (event.target === event.currentTarget) close();
-      }}
+    <>
+    <ModalShell
+      level="base"
+      onClose={close}
+      closeGuard={closeGuard}
+      maxWidthClassName="sm:max-w-[780px]"
+      bodyRef={listRef}
+      title="Edit Categories"
+      subtitle="Organize your items by type, not just location"
     >
-      <div className="flex h-full w-full flex-col bg-cute-bg sm:h-auto sm:max-h-[90vh] sm:max-w-[780px] sm:rounded-cute-l sm:bg-cute-surface sm:shadow-[0_16px_40px_-8px_rgba(74,63,85,0.19)]">
-        <div className="flex w-full items-center gap-3.5 px-5 pt-5 pb-3 sm:items-start sm:justify-between sm:p-8 sm:pb-0">
-          <button
-            type="button"
-            onClick={close}
-            aria-label="Go back"
-            className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-cute-surface-alt text-cute-text transition hover:brightness-95 sm:hidden"
-          >
-            <ChevronLeft size={18} />
-          </button>
-          <div className="flex min-w-0 flex-1 flex-col sm:gap-1">
-            <h2 className="truncate font-heading text-xl font-semibold text-cute-text sm:text-[22px]">
-              Manage Categories
-            </h2>
-            <p className="hidden font-body text-[13px] text-cute-text-muted sm:block">
-              Organize your items by type, not just location
-            </p>
-          </div>
-          <button
-            type="button"
-            onClick={close}
-            aria-label="Close"
-            className="hidden h-9 w-9 items-center justify-center rounded-full bg-cute-surface-alt text-cute-text-muted transition hover:brightness-95 sm:flex"
-          >
-            <X size={16} />
-          </button>
-        </div>
-
-        <div className="flex w-full flex-1 flex-col gap-5 overflow-y-auto px-5 py-4 sm:flex-none sm:p-8 sm:pt-5">
         {error && <p className="font-body text-sm text-cute-danger">{error}</p>}
 
         <div className="flex w-full flex-col gap-3">
@@ -121,21 +145,28 @@ export function ManageCategoriesModal({ onClose }: ManageCategoriesModalProps) {
                     <p className="font-heading text-[15px] font-medium text-cute-text">
                       {category.name}
                     </p>
-                    <p className="font-body text-xs text-cute-text-muted">
-                      {category.itemCount ?? 0} {category.itemCount === 1 ? "item" : "items"}
-                      {(category.locations?.length ?? 0) > 0 &&
-                        ` (${category.locations.join(" + ")})`}
-                    </p>
                   </div>
-                  <div className="flex items-center gap-0.5">
+                  <div className="flex items-center gap-2">
                     <button
                       type="button"
                       aria-label={`Edit ${category.name}`}
-                      onClick={() => setEditingCategory(category)}
-                      className="flex h-9 w-9 items-center justify-center rounded-full text-cute-text-muted transition hover:bg-cute-surface"
+                      onClick={() => openEditor(() => setEditingCategory(category))}
+                      className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full text-cute-text-muted transition hover:bg-cute-surface"
                     >
                       <Pencil size={15} />
                     </button>
+                    <button
+                      type="button"
+                      aria-label={isExpanded ? `Collapse ${category.name}` : `Expand ${category.name}`}
+                      onClick={() => setExpandedId(isExpanded ? null : category.id)}
+                      className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full text-cute-text-muted transition hover:bg-cute-surface"
+                    >
+                      {isExpanded ? <ChevronUp size={15} /> : <ChevronDown size={15} />}
+                    </button>
+                    {/* Divider + always-on red tint keep Delete from reading as just
+                        another icon in the row, so a mis-tap aimed at Edit/Expand
+                        can't land on it. */}
+                    <span className="h-6 w-px shrink-0 bg-cute-border" aria-hidden="true" />
                     <button
                       type="button"
                       aria-label={`Delete ${category.name}`}
@@ -148,17 +179,9 @@ export function ManageCategoriesModal({ onClose }: ManageCategoriesModalProps) {
                           affectsItems: true,
                         })
                       }
-                      className="flex h-9 w-9 items-center justify-center rounded-full text-cute-text-muted transition hover:bg-cute-surface hover:text-cute-danger"
+                      className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full text-cute-destructive transition hover:bg-cute-destructive/10"
                     >
                       <Trash2 size={15} />
-                    </button>
-                    <button
-                      type="button"
-                      aria-label={isExpanded ? `Collapse ${category.name}` : `Expand ${category.name}`}
-                      onClick={() => setExpandedId(isExpanded ? null : category.id)}
-                      className="flex h-9 w-9 items-center justify-center rounded-full text-cute-text-muted transition hover:bg-cute-surface"
-                    >
-                      {isExpanded ? <ChevronUp size={15} /> : <ChevronDown size={15} />}
                     </button>
                   </div>
                 </div>
@@ -184,7 +207,7 @@ export function ManageCategoriesModal({ onClose }: ManageCategoriesModalProps) {
                                 affectsItems: true,
                               })
                             }
-                            className="text-cute-text-muted transition hover:text-cute-danger"
+                            className="text-cute-text-muted transition hover:text-cute-destructive"
                           >
                             <X size={12} />
                           </button>
@@ -213,7 +236,11 @@ export function ManageCategoriesModal({ onClose }: ManageCategoriesModalProps) {
                               <button
                                 type="button"
                                 aria-label={`Remove ${tag.name} tag from ${category.name}`}
-                                onClick={() => run(() => detachTag(category.id, tag.id))}
+                                onClick={() => {
+                                  // Error (if any) is already surfaced via the
+                                  // banner by run(); nothing here needs the rejection.
+                                  run(() => detachTag(category.id, tag.id)).catch(() => {});
+                                }}
                                 className="transition hover:opacity-70"
                               >
                                 <X size={12} />
@@ -236,39 +263,54 @@ export function ManageCategoriesModal({ onClose }: ManageCategoriesModalProps) {
 
         <button
           type="button"
-          onClick={() => setAddingCategory(true)}
+          onClick={() => openEditor(() => setAddingCategory(true))}
           className="flex w-full shrink-0 items-center justify-center gap-2 rounded-cute-m border-[1.5px] border-cute-border p-3.5 font-body text-sm font-semibold text-cute-text transition hover:bg-cute-surface-alt"
         >
           <Plus size={16} />
           Add Category
         </button>
-        </div>
-      </div>
-      {editorOpen && (
-        <EditCategoryModal
-          category={editingCategory ?? undefined}
-          onClose={() => {
-            setEditingCategory(null);
-            setAddingCategory(false);
-          }}
-          onSaved={(saved) => {
-            changes.current.categories ||= saved.categories;
-            changes.current.items ||= saved.items;
-            refresh();
-          }}
-        />
-      )}
-      {pendingDelete && (
-        <ConfirmDeleteModal
-          title={pendingDelete.title}
-          message={pendingDelete.message}
-          onCancel={() => setPendingDelete(null)}
-          onConfirm={async () => {
+    </ModalShell>
+    {/* Both rendered as siblings, not nested, so their own ModalShell
+        overlays (level="elevated"/"alert") paint above this one at the
+        shared z-scale, layering Manage Categories → Edit Category →
+        Confirm Delete correctly. */}
+    {editorOpen && (
+      <EditCategoryModal
+        category={editingCategory ?? undefined}
+        onClose={() => {
+          setEditingCategory(null);
+          setAddingCategory(false);
+        }}
+        onSaved={(saved) => {
+          changes.current.categories ||= saved.categories;
+          changes.current.items ||= saved.items;
+          if (controlled) {
+            // Matches run()'s handling of the same parent-supplied callback:
+            // a rejection here has nowhere useful to go, so swallow it
+            // rather than let it surface as an unhandled rejection.
+            onChanged?.()?.catch(() => {});
+          } else {
+            selfRefresh();
+          }
+        }}
+      />
+    )}
+    {pendingDelete && (
+      <ConfirmDeleteModal
+        title={pendingDelete.title}
+        message={pendingDelete.message}
+        onCancel={() => setPendingDelete(null)}
+        onConfirm={async () => {
+          try {
             await run(pendingDelete.action, pendingDelete.affectsItems);
+          } catch {
+            // Error message already recorded by run(); still dismiss the dialog.
+          } finally {
             setPendingDelete(null);
-          }}
-        />
-      )}
-    </div>
+          }
+        }}
+      />
+    )}
+    </>
   );
 }

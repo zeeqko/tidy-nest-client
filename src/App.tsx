@@ -4,6 +4,7 @@ import { HomePage } from "./components/HomePage";
 import { AllItemsPage } from "./components/AllItemsPage";
 import { AllCategoriesPage } from "./components/AllCategoriesPage";
 import { CategoryPage } from "./components/CategoryPage";
+import { NotFoundPage } from "./components/NotFoundPage";
 import { SignInPage } from "./components/SignInPage";
 import { SignUpPage } from "./components/SignUpPage";
 import { RequireAuth } from "./components/RequireAuth";
@@ -20,6 +21,7 @@ function App() {
             <Route path="/items" element={<AllItemsPage />} />
             <Route path="/categories" element={<AllCategoriesPage />} />
             <Route path="/category/:categoryId" element={<CategoryPage />} />
+            <Route path="*" element={<NotFoundPage />} />
           </Route>
         </Route>
       </Routes>

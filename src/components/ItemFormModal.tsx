@@ -1,7 +1,8 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Camera, Image, X } from "lucide-react";
+import { Camera, Image, Sparkles, X } from "lucide-react";
 import type { ApiCategory } from "../api/categories";
 import { createItem, updateItem } from "../api/inventory";
+import { recognizeItem } from "../api/recognition";
 import { uploadImage } from "../api/uploads";
 import { tagChip } from "../data/presentation";
 import type { OrganizingItem } from "../types";
@@ -136,6 +137,18 @@ export function ItemFormModal({
   const cameraInputRef = useRef<HTMLInputElement>(null);
   const libraryInputRef = useRef<HTMLInputElement>(null);
 
+  // AI Recognition is only offered when adding a new item (not editing one).
+  // In "ai" mode, picking a photo also asks Gemini for a category + name and
+  // prefills the fields below; "manual" mode is today's plain photo attach.
+  const [uploadMode, setUploadMode] = useState<"manual" | "ai">("manual");
+  const [recognizing, setRecognizing] = useState(false);
+  const [recognitionError, setRecognitionError] = useState<string | null>(null);
+  const [recognitionNote, setRecognitionNote] = useState<string | null>(null);
+  // Bumped whenever an in-flight recognition should be considered stale (mode
+  // switch, photo removed) so its eventual response is dropped instead of
+  // overwriting fields the user has since moved past.
+  const recognitionRequestIdRef = useRef(0);
+
   const photoPreview = useMemo(
     () => (photoFile ? URL.createObjectURL(photoFile) : null),
     [photoFile],
@@ -146,16 +159,65 @@ export function ItemFormModal({
     };
   }, [photoPreview]);
 
+  // Sends file to Gemini and, on success, prefills name + category. Category
+  // is matched case-insensitively against apiCategories because the backend
+  // constrains Gemini's answer to one of the caller's own category names but
+  // still returns it as free text.
+  const runRecognition = useCallback(
+    async (file: File) => {
+      const requestId = ++recognitionRequestIdRef.current;
+      setRecognizing(true);
+      setRecognitionError(null);
+      setRecognitionNote(null);
+      try {
+        const prepared = await preparePhoto(file);
+        const result = await recognizeItem(prepared.blob, prepared.filename);
+        // The user may have switched to Manual or removed the photo while
+        // this was in flight — a stale result must not overwrite what they
+        // see now.
+        if (recognitionRequestIdRef.current !== requestId) return;
+        setName(result.itemName);
+        const match = apiCategories.find(
+          (c) => c.name.toLowerCase() === result.category.toLowerCase(),
+        );
+        if (match) {
+          setCategoryId(match.id);
+          setRecognitionNote(`Detected: ${result.category} → ${result.itemName}`);
+        } else {
+          setRecognitionNote(
+            `Detected "${result.itemName}" but couldn't match category "${result.category}" — pick one manually.`,
+          );
+        }
+      } catch (err) {
+        if (recognitionRequestIdRef.current !== requestId) return;
+        setRecognitionError(
+          err instanceof Error
+            ? err.message
+            : "Couldn't recognize this item — fill in the details manually.",
+        );
+      } finally {
+        if (recognitionRequestIdRef.current === requestId) setRecognizing(false);
+      }
+    },
+    [apiCategories],
+  );
+
   const handlePhotoChange = (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
-    if (file) setPhotoFile(file);
     // Reset so picking the same file (or retaking a photo) fires again.
     event.target.value = "";
+    if (!file) return;
+    setPhotoFile(file);
+    if (uploadMode === "ai") void runRecognition(file);
   };
 
   const removePhoto = () => {
+    recognitionRequestIdRef.current += 1;
     setPhotoFile(null);
     setImageURL("");
+    setRecognizing(false);
+    setRecognitionError(null);
+    setRecognitionNote(null);
   };
 
   // Escape closes only an open dropdown first (OptionPicker's own effect
@@ -295,7 +357,7 @@ export function ItemFormModal({
           </button>
           <button
             type="submit"
-            disabled={saving}
+            disabled={saving || recognizing}
             className="flex flex-1 items-center justify-center rounded-full bg-cute-primary px-4 py-[13px] font-body text-sm font-semibold text-cute-primary-foreground transition hover:brightness-105 disabled:opacity-60"
           >
             {saving ? "Saving…" : item ? "Save Changes" : "Add Item"}
@@ -308,6 +370,42 @@ export function ItemFormModal({
           <span className="font-body text-xs font-semibold text-cute-text-muted">
             Photo (optional)
           </span>
+          {!item && (
+            <div className="flex w-full rounded-full border-[1.5px] border-cute-border bg-cute-surface p-1">
+              {(
+                [
+                  { value: "manual", label: "Manual" },
+                  { value: "ai", label: "AI Recognition" },
+                ] as const
+              ).map((option) => (
+                <button
+                  key={option.value}
+                  type="button"
+                  disabled={recognizing}
+                  onClick={() => {
+                    recognitionRequestIdRef.current += 1;
+                    setRecognizing(false);
+                    setUploadMode(option.value);
+                    setRecognitionError(null);
+                    setRecognitionNote(null);
+                  }}
+                  className={`flex-1 rounded-full px-3 py-1.5 font-body text-xs font-semibold transition disabled:opacity-60 ${
+                    uploadMode === option.value
+                      ? "bg-cute-primary text-cute-primary-foreground"
+                      : "text-cute-text-muted hover:text-cute-text"
+                  }`}
+                >
+                  {option.value === "ai" && <Sparkles size={12} className="mr-1 inline-block" />}
+                  {option.label}
+                </button>
+              ))}
+            </div>
+          )}
+          {uploadMode === "ai" && !photoPreview && !imageURL && (
+            <p className="font-body text-xs text-cute-text-muted">
+              Upload a photo and we'll suggest a category and name.
+            </p>
+          )}
           {photoPreview || imageURL ? (
             <div className="relative w-full overflow-hidden rounded-cute-m border border-cute-border">
               <img
@@ -319,24 +417,27 @@ export function ItemFormModal({
                 <button
                   type="button"
                   onClick={() => cameraInputRef.current?.click()}
+                  disabled={recognizing}
                   aria-label="Retake photo"
-                  className="flex h-8 w-8 items-center justify-center rounded-full bg-cute-surface text-cute-text shadow-[0_2px_8px_rgba(74,63,85,0.2)] transition hover:brightness-95"
+                  className="flex h-8 w-8 items-center justify-center rounded-full bg-cute-surface text-cute-text shadow-[0_2px_8px_rgba(74,63,85,0.2)] transition hover:brightness-95 disabled:opacity-60"
                 >
                   <Camera size={14} />
                 </button>
                 <button
                   type="button"
                   onClick={() => libraryInputRef.current?.click()}
+                  disabled={recognizing}
                   aria-label="Choose a different photo"
-                  className="flex h-8 w-8 items-center justify-center rounded-full bg-cute-surface text-cute-text shadow-[0_2px_8px_rgba(74,63,85,0.2)] transition hover:brightness-95"
+                  className="flex h-8 w-8 items-center justify-center rounded-full bg-cute-surface text-cute-text shadow-[0_2px_8px_rgba(74,63,85,0.2)] transition hover:brightness-95 disabled:opacity-60"
                 >
                   <Image size={14} />
                 </button>
                 <button
                   type="button"
                   onClick={removePhoto}
+                  disabled={recognizing}
                   aria-label="Remove photo"
-                  className="flex h-8 w-8 items-center justify-center rounded-full bg-cute-surface text-cute-danger shadow-[0_2px_8px_rgba(74,63,85,0.2)] transition hover:brightness-95"
+                  className="flex h-8 w-8 items-center justify-center rounded-full bg-cute-surface text-cute-danger shadow-[0_2px_8px_rgba(74,63,85,0.2)] transition hover:brightness-95 disabled:opacity-60"
                 >
                   <X size={14} />
                 </button>
@@ -347,7 +448,8 @@ export function ItemFormModal({
               <button
                 type="button"
                 onClick={() => cameraInputRef.current?.click()}
-                className="flex items-center justify-center gap-2 rounded-cute-m border-[1.5px] border-dashed border-cute-border bg-cute-surface px-3.5 py-3 font-body text-sm font-semibold text-cute-text transition hover:bg-cute-surface-alt"
+                disabled={recognizing}
+                className="flex items-center justify-center gap-2 rounded-cute-m border-[1.5px] border-dashed border-cute-border bg-cute-surface px-3.5 py-3 font-body text-sm font-semibold text-cute-text transition hover:bg-cute-surface-alt disabled:opacity-60"
               >
                 <Camera size={16} className="text-cute-text-muted" />
                 Take Photo
@@ -355,12 +457,22 @@ export function ItemFormModal({
               <button
                 type="button"
                 onClick={() => libraryInputRef.current?.click()}
-                className="flex items-center justify-center gap-2 rounded-cute-m border-[1.5px] border-dashed border-cute-border bg-cute-surface px-3.5 py-3 font-body text-sm font-semibold text-cute-text transition hover:bg-cute-surface-alt"
+                disabled={recognizing}
+                className="flex items-center justify-center gap-2 rounded-cute-m border-[1.5px] border-dashed border-cute-border bg-cute-surface px-3.5 py-3 font-body text-sm font-semibold text-cute-text transition hover:bg-cute-surface-alt disabled:opacity-60"
               >
                 <Image size={16} className="text-cute-text-muted" />
                 Choose Photo
               </button>
             </div>
+          )}
+          {recognizing && (
+            <p className="font-body text-xs font-semibold text-cute-primary">Recognizing…</p>
+          )}
+          {recognitionNote && !recognizing && (
+            <p className="font-body text-xs font-semibold text-cute-text">{recognitionNote}</p>
+          )}
+          {recognitionError && !recognizing && (
+            <p className="font-body text-xs text-cute-danger">{recognitionError}</p>
           )}
           {/* capture opens the camera directly on phones; without it the
               picker offers the photo library. Desktops treat both as pickers. */}

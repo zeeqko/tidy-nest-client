@@ -5,30 +5,34 @@
   --font-heading: "Fredoka", sans-serif;
   --font-body: "Quicksand", sans-serif;
 
-  --color-cute-bg: #fff8f3;
+  --color-cute-bg: #FBF3F0;
   --color-cute-surface: #ffffff;
-  --color-cute-surface-alt: #fff0f5;
-  --color-cute-border: #f5dce8;
-  --color-cute-text: #4a3f55;
-  --color-cute-text-muted: #9c8fae;
+  /* --color-cute-surface-alt: #fff0f5; */
+  --color-cute-surface-alt: #F5E9E7;
+  --color-cute-border: #EAD9D6;
+  --color-cute-text: #4A3538;
+  --color-cute-text-muted: #9C8288;
 
-  --color-cute-primary: #ff8fab;
+  /* --color-cute-primary: #ff8fab; */
+  --color-cute-primary: #99606E;
+  /* --color-cute-primary-foreground: #000000; */
   --color-cute-primary-foreground: #ffffff;
-  --color-cute-secondary: #c9b6ff;
-  --color-cute-secondary-foreground: #4a3f66;
-  --color-cute-accent: #ffd873;
-  --color-cute-accent-foreground: #6b4f00;
+  --color-cute-secondary: #8B9A7D;
+  --color-cute-secondary-foreground: #33402C;
+  --color-cute-accent: #C9A15C;
+  --color-cute-accent-foreground: #4A3410;
   --color-cute-success: #b8efc0;
   --color-cute-success-foreground: #1f5c2a;
-  --color-cute-danger: #ff7a90;
-  --color-cute-danger-foreground: #7a1f33;
+  --color-cute-danger: #A8524F;
+  --color-cute-danger-foreground: #FFFFFF;
   /* Genuinely distinct from cute-primary/cute-danger (both pastel pinks) —
      a true, saturated red reserved for destructive actions (delete triggers
      and the delete-confirm button), so filled-pink always reads as
      "confirm" and this token always reads as "destroy". */
   --color-cute-destructive: #dc2626;
   --color-cute-destructive-foreground: #ffffff;
-  --color-cute-info: #d6ecff;
+  /* --color-cute-info: #d6ecff; */
+  --color-cute-info: #000000;
   --color-cute-info-foreground: #1b4d89;
   --color-cute-warning: #ffe9a8;
   --color-cute-warning-foreground: #8a6a00;

@@ -250,36 +250,19 @@ export function CategoryPage() {
             }}
           />
         ) : (
-          <>
-            {/* Mobile: single-column row cards, like the Home category list. */}
-            <div className="flex w-full flex-col gap-2.5 sm:hidden">
-              {filteredItems.map((item) => (
-                <ItemCard
-                  key={item.id}
-                  item={item}
-                  density="compact"
-                  chipMode="subcategory"
-                  onSelect={setSelectedItem}
-                  onEdit={openEdit}
-                  onDelete={setDeleteTarget}
-                />
-              ))}
-            </div>
-            {/* Desktop: large photo cards from the Category Modal design. */}
-            <div className="hidden w-full grid-cols-3 gap-6 sm:grid md:grid-cols-4 xl:grid-cols-5">
-              {filteredItems.map((item) => (
-                <ItemCard
-                  key={item.id}
-                  item={item}
-                  density="full"
-                  chipMode="subcategory"
-                  onSelect={setSelectedItem}
-                  onEdit={openEdit}
-                  onDelete={setDeleteTarget}
-                />
-              ))}
-            </div>
-          </>
+          <div className="grid w-full grid-cols-2 gap-3 sm:grid-cols-3 sm:gap-6 md:grid-cols-4 xl:grid-cols-5">
+            {filteredItems.map((item) => (
+              <ItemCard
+                key={item.id}
+                item={item}
+                density="full"
+                chipMode="subcategory"
+                onSelect={setSelectedItem}
+                onEdit={openEdit}
+                onDelete={setDeleteTarget}
+              />
+            ))}
+          </div>
         )}
       </div>
 

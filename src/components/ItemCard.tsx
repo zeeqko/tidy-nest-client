@@ -140,21 +140,21 @@ function FullCard({ item, chipMode = "category", onSelect, onEdit, onDelete }: I
         )}
         {chipMode === "category" ? (
           <span
-            className="absolute top-2.5 right-2.5 rounded-full px-2.5 py-1 font-body text-[11px] font-semibold"
+            className="absolute top-2.5 right-2.5 max-w-[65%] truncate rounded-full px-2.5 py-1 font-body text-[11px] font-semibold"
             style={{ backgroundColor: item.category.bg, color: item.category.fg }}
           >
             {item.category.label}
           </span>
         ) : (
           item.subcategory && (
-            <span className="absolute top-2.5 right-2.5 rounded-full bg-white/90 px-2.5 py-1 font-body text-[11px] font-semibold text-cute-text">
+            <span className="absolute top-2.5 right-2.5 max-w-[65%] truncate rounded-full bg-white/90 px-2.5 py-1 font-body text-[11px] font-semibold text-cute-text">
               {item.subcategory}
             </span>
           )
         )}
         {tag && (
           <span
-            className="absolute bottom-2.5 left-2.5 rounded-full px-2.5 py-1 font-body text-[11px] font-semibold"
+            className="absolute bottom-2.5 left-2.5 max-w-[65%] truncate rounded-full px-2.5 py-1 font-body text-[11px] font-semibold"
             style={{ backgroundColor: tag.bg, color: tag.fg }}
           >
             {tag.label}
@@ -162,18 +162,20 @@ function FullCard({ item, chipMode = "category", onSelect, onEdit, onDelete }: I
         )}
       </div>
 
-      <div className="flex w-full flex-col gap-2.5 p-4">
+      <div className="flex w-full flex-col gap-2.5 p-3 sm:p-4">
         <div className="flex w-full flex-col gap-0.5">
-          <h3 className="font-heading text-base font-medium text-cute-text">{item.name}</h3>
-          <p className="font-body text-xs text-cute-text-muted">{item.subtitle}</p>
+          <h3 className="line-clamp-2 font-heading text-base font-medium text-cute-text">
+            {item.name}
+          </h3>
+          <p className="truncate font-body text-xs text-cute-text-muted">{item.subtitle}</p>
         </div>
 
         <LocationLine item={item} />
 
-        <div className="flex w-full items-center justify-between">
+        <div className="flex w-full flex-wrap items-center justify-between gap-1.5">
           {item.status ? (
             <span
-              className="rounded-full px-3 py-[5px] font-body text-[11px] font-semibold"
+              className="min-w-0 max-w-full truncate rounded-full px-3 py-[5px] font-body text-[11px] font-semibold"
               style={{ backgroundColor: item.status.bg, color: item.status.fg }}
             >
               {item.status.label}

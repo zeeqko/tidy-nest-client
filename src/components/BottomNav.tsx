@@ -1,10 +1,15 @@
-import { House, Boxes, Plus, Shapes, Menu, type LucideIcon } from "lucide-react";
+import { House, Boxes, Plus, Shapes, Palette, type LucideIcon } from "lucide-react";
 import { useLocation, useNavigate } from "react-router-dom";
 
 interface BottomNavProps {
   onAddItem: () => void;
-  onMenu: () => void;
-  menuOpen?: boolean;
+  onEditCategory: () => void;
+  editCategoryActive?: boolean;
+  /** Called when Home or Items is tapped, before navigating — lets the
+   *  caller dismiss the Category panel even when the tap doesn't change the
+   *  route (e.g. tapping Home while already on Home), which a route-change
+   *  effect alone would miss. */
+  onTabChange?: () => void;
 }
 
 interface TabProps {
@@ -14,17 +19,24 @@ interface TabProps {
   onClick: () => void;
   ariaExpanded?: boolean;
   ariaHasPopup?: "menu";
+  disabled?: boolean;
 }
 
-function Tab({ label, icon: Icon, active, onClick, ariaExpanded, ariaHasPopup }: TabProps) {
+function Tab({ label, icon: Icon, active, onClick, ariaExpanded, ariaHasPopup, disabled }: TabProps) {
   return (
     <button
       type="button"
       onClick={onClick}
+      disabled={disabled}
+      title={disabled ? "Coming soon" : undefined}
       aria-expanded={ariaExpanded}
       aria-haspopup={ariaHasPopup}
       className={`flex flex-1 flex-col items-center gap-[3px] py-1 font-body text-[11px] transition ${
-        active ? "font-semibold text-cute-primary" : "text-cute-text-muted"
+        disabled
+          ? "cursor-not-allowed text-cute-text-muted opacity-40"
+          : active
+            ? "font-semibold text-cute-primary"
+            : "text-cute-text-muted"
       }`}
     >
       <Icon size={22} />
@@ -34,18 +46,33 @@ function Tab({ label, icon: Icon, active, onClick, ariaExpanded, ariaHasPopup }:
 }
 
 /** Mobile-only bottom navigation (per the mobile designs in UI.pen). */
-export function BottomNav({ onAddItem, onMenu, menuOpen }: BottomNavProps) {
+export function BottomNav({
+  onAddItem,
+  onEditCategory,
+  editCategoryActive,
+  onTabChange,
+}: BottomNavProps) {
   const navigate = useNavigate();
   const { pathname } = useLocation();
 
+  const goTo = (path: string) => {
+    onTabChange?.();
+    navigate(path);
+  };
+
   return (
     <nav className="fixed inset-x-0 bottom-0 z-40 flex items-center justify-around border-t border-cute-border bg-cute-surface px-4 pt-2 pb-[calc(0.5rem+env(safe-area-inset-bottom))] sm:hidden">
-      <Tab label="Home" icon={House} active={pathname === "/"} onClick={() => navigate("/")} />
+      <Tab
+        label="Home"
+        icon={House}
+        active={!editCategoryActive && pathname === "/"}
+        onClick={() => goTo("/")}
+      />
       <Tab
         label="Items"
         icon={Boxes}
-        active={pathname === "/items"}
-        onClick={() => navigate("/items")}
+        active={!editCategoryActive && pathname === "/items"}
+        onClick={() => goTo("/items")}
       />
       <button
         type="button"
@@ -55,19 +82,8 @@ export function BottomNav({ onAddItem, onMenu, menuOpen }: BottomNavProps) {
       >
         <Plus size={24} />
       </button>
-      <Tab
-        label="Categories"
-        icon={Shapes}
-        active={pathname.startsWith("/categor")}
-        onClick={() => navigate("/categories")}
-      />
-      <Tab
-        label="Menu"
-        icon={Menu}
-        onClick={onMenu}
-        ariaExpanded={menuOpen ?? false}
-        ariaHasPopup="menu"
-      />
+      <Tab label="Category" icon={Shapes} active={editCategoryActive} onClick={onEditCategory} />
+      <Tab label="Stylebook" icon={Palette} onClick={() => {}} disabled />
     </nav>
   );
 }

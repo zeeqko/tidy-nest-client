@@ -145,17 +145,21 @@ export function toOrganizingItem(
   const preset = category
     ? { ...presetFromCategory(category), chip: { ...presetFromCategory(category).chip, label: category.name } }
     : { ...fallbackPreset, chip: { ...fallbackPreset.chip, label: item.category || "Other" } };
+  // Falls back once the item's subcategory was deleted (API sends "") so
+  // filter chips, the item card subtitle, and the detail view never render
+  // a blank pill.
+  const subcategory = item.subcategory || "Other";
 
   return {
     id: item.id,
     name: item.name,
-    subtitle: item.subtitle || `${item.subcategory} · ${item.quantity}`,
+    subtitle: item.subtitle || `${subcategory} · ${item.quantity}`,
     location: item.location,
     icon: subcategoryIcons[item.subcategory] ?? preset.icon,
     iconBg: preset.iconBg,
     iconColor: preset.iconColor,
     category: preset.chip,
-    subcategory: item.subcategory,
+    subcategory,
     categoryId: item.categoryId,
     subCategoryId: item.subCategoryId,
     quantity: item.quantity,

@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Outlet, useLocation, useParams } from "react-router-dom";
 import { HomeTopBar } from "./HomeTopBar";
 import { NavMenu } from "./NavMenu";
@@ -42,6 +42,12 @@ export function AppLayout() {
   // the brand bar stays on Home and on desktop.
   const isHome = pathname === "/";
 
+  // The mobile bottom nav's Category tab opens Edit Categories as a tab-like
+  // panel (see ManageCategoriesModal's belowBottomNav/hideMobileBackButton),
+  // not a stacked flow with its own back button — so navigating to another
+  // tab is what closes it, same as switching any other tab.
+  useEffect(() => setManageOpen(false), [pathname]);
+
   return (
     <div className="min-h-screen w-full bg-cute-bg pt-[env(safe-area-inset-top)] pb-24 sm:pb-0">
       <HomeTopBar
@@ -57,8 +63,9 @@ export function AppLayout() {
       <Outlet key={pageVersion} />
       <BottomNav
         onAddItem={() => setAddItemOpen(true)}
-        onMenu={() => setMenuOpen((o) => !o)}
-        menuOpen={menuOpen}
+        onEditCategory={() => setManageOpen((open) => !open)}
+        editCategoryActive={manageOpen}
+        onTabChange={() => setManageOpen(false)}
       />
       {manageOpen && (
         <ManageCategoriesModal

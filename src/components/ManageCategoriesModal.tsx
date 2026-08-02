@@ -120,6 +120,8 @@ export function ManageCategoriesModal({
       bodyRef={listRef}
       title="Edit Categories"
       subtitle="Organize your items by type, not just location"
+      hideMobileBackButton
+      belowBottomNav
     >
         {error && <p className="font-body text-sm text-cute-danger">{error}</p>}
 
@@ -174,7 +176,9 @@ export function ManageCategoriesModal({
                         setPendingDelete({
                           title: `Delete "${category.name}"?`,
                           message:
-                            "Its subcategories are removed too; items keep existing but lose this category.",
+                            category.itemCount > 0
+                              ? `This permanently deletes its subcategories and all ${category.itemCount} item${category.itemCount === 1 ? "" : "s"} in it. This can't be undone.`
+                              : "This permanently deletes its subcategories. This can't be undone.",
                           action: () => deleteCategory(category.id),
                           affectsItems: true,
                         })
@@ -202,7 +206,7 @@ export function ManageCategoriesModal({
                               setPendingDelete({
                                 title: `Remove "${sub.name}"?`,
                                 message:
-                                  "Items in this subcategory keep existing but lose their category.",
+                                  "Items in this subcategory keep their category — they just lose this subcategory.",
                                 action: () => deleteSubCategory(sub.id),
                                 affectsItems: true,
                               })
@@ -239,7 +243,9 @@ export function ManageCategoriesModal({
                                 onClick={() => {
                                   // Error (if any) is already surfaced via the
                                   // banner by run(); nothing here needs the rejection.
-                                  run(() => detachTag(category.id, tag.id)).catch(() => {});
+                                  // affectsItems: true — detaching now also strips
+                                  // the tag from this category's items.
+                                  run(() => detachTag(category.id, tag.id), true).catch(() => {});
                                 }}
                                 className="transition hover:opacity-70"
                               >

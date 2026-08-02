@@ -156,7 +156,10 @@ export function EditCategoryModal({ category, onClose, onSaved }: EditCategoryMo
 
         const keptTagIds = new Set(tagChips.map((t) => t.id).filter((id) => id !== undefined));
         for (const tag of category.tags ?? []) {
-          if (!keptTagIds.has(tag.id)) await detachTag(category.id, tag.id);
+          if (!keptTagIds.has(tag.id)) {
+            await detachTag(category.id, tag.id);
+            itemsAffected = true;
+          }
         }
       } else {
         const created = await createCategory(payload);
@@ -347,7 +350,11 @@ export function EditCategoryModal({ category, onClose, onSaved }: EditCategoryMo
       {confirmingDelete && category && (
         <ConfirmDeleteModal
           title={`Delete "${category.name}"?`}
-          message="Its subcategories are removed too; items keep existing but lose this category."
+          message={
+            category.itemCount > 0
+              ? `This permanently deletes its subcategories and all ${category.itemCount} item${category.itemCount === 1 ? "" : "s"} in it. This can't be undone.`
+              : "This permanently deletes its subcategories. This can't be undone."
+          }
           onCancel={() => setConfirmingDelete(false)}
           onConfirm={async () => {
             try {

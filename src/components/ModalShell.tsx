@@ -89,6 +89,15 @@ interface ModalShellPageProps {
   /** Render the card as a `<form>` instead of a `<div>` (e.g. `ItemFormModal`). */
   as?: "div" | "form";
   onSubmit?: (event: FormEvent<HTMLFormElement>) => void;
+  /** Omit the mobile back-chevron header button (page variant only). Use for
+   *  a modal meant to feel like a tab's page rather than a stacked flow —
+   *  the caller is responsible for another way to dismiss it. */
+  hideMobileBackButton?: boolean;
+  /** Render below `BottomNav` on mobile (z-30, under its z-40) instead of
+   *  covering it, and reserve `pb-24` at the bottom of the body so content
+   *  isn't hidden behind the nav. No effect at `sm`+, where `BottomNav`
+   *  doesn't render. */
+  belowBottomNav?: boolean;
   children: ReactNode;
 }
 
@@ -115,6 +124,8 @@ export function ModalShell({
   maxWidthClassName,
   as = "div",
   onSubmit,
+  hideMobileBackButton,
+  belowBottomNav,
   children,
 }: ModalShellPageProps) {
   useEffect(() => {
@@ -133,7 +144,10 @@ export function ModalShell({
     onClose();
   };
 
-  const zIndexClass = MODAL_Z_CLASS[level];
+  // Sits under BottomNav's z-40 on mobile so the nav stays visible/usable
+  // above this modal's card, instead of the modal covering it; unaffected at
+  // sm+, where BottomNav doesn't render.
+  const zIndexClass = belowBottomNav ? "z-30 sm:z-[50]" : MODAL_Z_CLASS[level];
 
   if (variant === "alert") {
     return (
@@ -157,14 +171,16 @@ export function ModalShell({
   const cardContent = (
     <>
       <div className="flex w-full items-center gap-3.5 px-5 pt-5 pb-3 sm:items-start sm:justify-between sm:p-8 sm:pb-0">
-        <button
-          type="button"
-          onClick={onClose}
-          aria-label="Go back"
-          className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-cute-surface-alt text-cute-text transition hover:brightness-95 sm:hidden"
-        >
-          <ChevronLeft size={18} />
-        </button>
+        {!hideMobileBackButton && (
+          <button
+            type="button"
+            onClick={onClose}
+            aria-label="Go back"
+            className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-cute-surface-alt text-cute-text transition hover:brightness-95 sm:hidden"
+          >
+            <ChevronLeft size={18} />
+          </button>
+        )}
         <div className="flex min-w-0 flex-1 flex-col sm:gap-1">
           {titleAs === "div" ? (
             <div className={titleClassName ?? DEFAULT_TITLE_CLASS}>{title}</div>
@@ -192,7 +208,7 @@ export function ModalShell({
         ref={bodyRef}
         className={`flex min-h-0 w-full flex-1 flex-col overflow-y-auto ${
           bodyClassName ?? DEFAULT_BODY_CLASS
-        }`}
+        } ${belowBottomNav ? "pb-24 sm:pb-0" : ""}`}
       >
         {children}
       </div>

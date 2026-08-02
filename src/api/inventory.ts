@@ -15,8 +15,10 @@ export interface ApiInventoryItem {
   subtitle: string;
   category: string;
   subcategory: string;
-  /** Same-shaped ids as Category.id/subcategories[].id; null when the item's
-   * subcategory (or its parent category) no longer exists. */
+  /** Same-shaped ids as Category.id/subcategories[].id. subCategoryId turns
+   * null once its subcategory is deleted (the item keeps its category);
+   * categoryId is independent and null only if the item never had a
+   * category assigned. */
   categoryId: string | null;
   subCategoryId: string | null;
   location: string;

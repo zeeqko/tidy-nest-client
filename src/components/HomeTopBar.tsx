@@ -48,7 +48,7 @@ export function HomeTopBar({ onMenuClick, menuOpen, className }: HomeTopBarProps
           aria-label="Open menu"
           aria-expanded={menuOpen ?? false}
           aria-haspopup="menu"
-          className="flex h-10 w-10 items-center justify-center rounded-full bg-cute-surface-alt text-cute-text transition hover:brightness-95"
+          className="hidden h-10 w-10 items-center justify-center rounded-full bg-cute-surface-alt text-cute-text transition hover:brightness-95 sm:flex"
         >
           <Menu size={18} />
         </button>

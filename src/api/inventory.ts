@@ -28,6 +28,9 @@ export interface ApiInventoryItem {
   notes?: string;
   /** Same-origin URL of the item's photo (e.g. /uploads/ab12.jpg). */
   imageURL?: string;
+  /** Same-origin URL of the item's background-removed cutout (PNG), used on
+   * outfit surfaces. Falls back to imageURL when absent. */
+  cutoutURL?: string;
   /** Optional dates in YYYY-MM-DD form. */
   expiryDate?: string;
   opensOn?: string;

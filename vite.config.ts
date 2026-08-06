@@ -5,6 +5,13 @@ import { VitePWA } from 'vite-plugin-pwa'
 
 // https://vite.dev/config/
 export default defineConfig({
+  worker: {
+    // src/lib/backgroundRemoval.worker.ts dynamically imports
+    // @imgly/background-removal from inside the worker, so the bundled
+    // worker chunk needs to be an ES module (Vite's default 'iife' worker
+    // format can't contain a top-level dynamic import the way this needs).
+    format: 'es',
+  },
   plugins: [
     react(),
     tailwindcss(),
@@ -31,6 +38,16 @@ export default defineConfig({
       },
       workbox: {
         globPatterns: ['**/*.{js,css,html,svg,png,woff2}'],
+        // @imgly/background-removal (dynamically imported only when a photo
+        // is attached, see src/lib/backgroundRemoval.ts) pulls in
+        // onnxruntime-web, whose WASM binary and JS runtime chunks land in
+        // dist/assets as ort*.js / ort*.wasm. The .wasm isn't matched by
+        // globPatterns above, but the .js glue/runtime chunks are — exclude
+        // them explicitly so the service worker never eagerly precaches the
+        // ONNX runtime for visitors who never add a photo. The actual model
+        // weights are fetched from imgly's CDN at inference time and were
+        // never part of this build's output to begin with.
+        globIgnores: ['**/ort*.js', '**/ort*.wasm'],
         // The app shell works offline; API data always goes to the network
         // (falling back to nothing rather than stale caches).
         navigateFallbackDenylist: [/^\/api\//, /^\/uploads\//],

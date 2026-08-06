@@ -70,7 +70,11 @@ const illustrationPresets: Record<string, CategoryPreset> = {
   },
 };
 
-const fallbackPreset: CategoryPreset = {
+/** Plain grey preset used wherever there's no category (or, for Look items
+ *  synthesised from `ApiLookItem`, no category info at all) to fall back to
+ *  — exported so other surfaces that need the same "no photo" icon/colour
+ *  treatment don't invent their own colours. */
+export const fallbackPreset: CategoryPreset = {
   chip: { label: "Other", bg: "#E7E2EE", fg: "#4A3F55" },
   icon: Package,
   iconBg: "#E7E2EE66",
@@ -164,6 +168,7 @@ export function toOrganizingItem(
     subCategoryId: item.subCategoryId,
     quantity: item.quantity,
     imageURL: item.imageURL,
+    cutoutURL: item.cutoutURL,
     expiryDate: item.expiryDate,
     opensOn: item.opensOn,
     tags: (item.tags ?? []).map((tag) => tagChip(tag.name, tag.colour)),

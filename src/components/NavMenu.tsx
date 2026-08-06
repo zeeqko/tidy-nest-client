@@ -1,6 +1,6 @@
 import { useEffect, useRef } from "react";
 import type { LucideIcon } from "lucide-react";
-import { House, Boxes, Shapes, Settings2 } from "lucide-react";
+import { House, Boxes, Shapes, Settings2, Shirt } from "lucide-react";
 import { useLocation, useNavigate } from "react-router-dom";
 import { MODAL_Z_CLASS } from "./ModalShell";
 
@@ -21,6 +21,7 @@ const menuItems: MenuItem[] = [
   { id: "home", label: "Home", icon: House, to: "/" },
   { id: "all-items", label: "All Items", icon: Boxes, to: "/items" },
   { id: "all-categories", label: "Browse Categories", icon: Shapes, to: "/categories" },
+  { id: "style-book", label: "Style Book", icon: Shirt, to: "/stylebook" },
   { id: "manage-categories", label: "Edit Categories", icon: Settings2 },
 ];
 

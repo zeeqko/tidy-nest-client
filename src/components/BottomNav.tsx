@@ -83,7 +83,12 @@ export function BottomNav({
         <Plus size={24} />
       </button>
       <Tab label="Category" icon={Shapes} active={editCategoryActive} onClick={onEditCategory} />
-      <Tab label="Stylebook" icon={Palette} onClick={() => {}} disabled />
+      <Tab
+        label="Style Book"
+        icon={Palette}
+        active={!editCategoryActive && pathname === "/stylebook"}
+        onClick={() => goTo("/stylebook")}
+      />
     </nav>
   );
 }

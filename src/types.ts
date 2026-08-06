@@ -36,6 +36,8 @@ export interface OrganizingItem {
   quantity: number;
   /** Same-origin URL of the item's photo, shown in place of the icon. */
   imageURL?: string;
+  /** Same-origin URL of the item's background-removed cutout, when one exists. */
+  cutoutURL?: string;
   /** Optional dates in YYYY-MM-DD form (for editing). */
   expiryDate?: string;
   opensOn?: string;

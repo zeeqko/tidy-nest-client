@@ -5,7 +5,6 @@ import { createItem, getItem, updateItem } from "../api/inventory";
 import { recognizeItem } from "../api/recognition";
 import { uploadImage } from "../api/uploads";
 import { tagChip } from "../data/presentation";
-import { removeBackground } from "../lib/backgroundRemoval";
 import type { OrganizingItem } from "../types";
 import { ModalShell } from "./ModalShell";
 import { OptionPicker } from "./OptionPicker";
@@ -76,34 +75,6 @@ async function preparePhoto(file: File): Promise<{ blob: Blob; filename: string 
   }
 }
 
-/**
- * Downscales a photo to MAX_PHOTO_DIMENSION on its longest side (same rule as
- * preparePhoto), re-encoded as PNG so the alpha channel background removal
- * produces stays intact. Feeding a downscaled source into removeBackground
- * keeps its PNG output well under the upload cap, instead of downscaling
- * after the fact. Falls back to the original file if decoding fails or the
- * file is already small enough.
- */
-async function downscaleForCutout(file: File): Promise<Blob> {
-  try {
-    const bitmap = await createImageBitmap(file);
-    const scale = Math.min(1, MAX_PHOTO_DIMENSION / Math.max(bitmap.width, bitmap.height));
-    if (scale >= 1) return file;
-    const canvas = document.createElement("canvas");
-    canvas.width = Math.round(bitmap.width * scale);
-    canvas.height = Math.round(bitmap.height * scale);
-    const context = canvas.getContext("2d");
-    if (!context) throw new Error("no canvas context");
-    context.drawImage(bitmap, 0, 0, canvas.width, canvas.height);
-    bitmap.close();
-    const blob = await new Promise<Blob | null>((resolve) => canvas.toBlob(resolve, "image/png"));
-    if (!blob) throw new Error("canvas export failed");
-    return blob;
-  } catch {
-    return file;
-  }
-}
-
 export function ItemFormModal({
   item,
   initialCategoryId,
@@ -166,16 +137,6 @@ export function ItemFormModal({
   const cameraInputRef = useRef<HTMLInputElement>(null);
   const libraryInputRef = useRef<HTMLInputElement>(null);
 
-  // Background-removal progress (gates the submit button, same pattern as
-  // `recognizing`) and a non-blocking note when it couldn't produce a cutout —
-  // the save still proceeds with imageURL only in that case. `cutoutURL`
-  // itself is never held in component state: it's only known at submit time
-  // (freshly generated from a new photo, or re-fetched from the server when
-  // editing without a new photo — see handleSubmit) because `item` (an
-  // `OrganizingItem`) doesn't carry it.
-  const [removingBackground, setRemovingBackground] = useState(false);
-  const [cutoutNote, setCutoutNote] = useState<string | null>(null);
-  const cutoutNoteRef = useRef<HTMLParagraphElement>(null);
 
   // AI Recognition is only offered when adding a new item (not editing one).
   // In "ai" mode, picking a photo also asks Gemini for a category + name and
@@ -258,7 +219,6 @@ export function ItemFormModal({
     setRecognizing(false);
     setRecognitionError(null);
     setRecognitionNote(null);
-    setCutoutNote(null);
   };
 
   // Escape closes only an open dropdown first (OptionPicker's own effect
@@ -275,20 +235,6 @@ export function ItemFormModal({
   useEffect(() => {
     if (error) errorRef.current?.scrollIntoView({ behavior: "smooth", block: "nearest" });
   }, [error]);
-
-  // Scroll a freshly-set cutoutNote into view too, but aligned to the top of
-  // the scrollable body (`block: "start"`) rather than `error`'s "nearest".
-  // The note sits near the top of the form, well above several more fields
-  // (Quantity, Tags, dates, Location, Notes) that still need to stay visible
-  // and reachable once it appears — "nearest" would often no-op here (the
-  // note itself is usually already at least partially in view at scrollTop
-  // 0), leaving the two-line note's added height to silently push that
-  // trailing content down past the modal's clipped body, flush against the
-  // sticky footer with no visible scroll affordance. Aligning the note to
-  // the top instead maximizes how much of what follows it becomes visible.
-  useEffect(() => {
-    if (cutoutNote) cutoutNoteRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
-  }, [cutoutNote]);
 
   // Push a history entry while the modal is open so browser Back closes it
   // instead of navigating away; on popstate, close (don't navigate) and skip
@@ -361,46 +307,19 @@ export function ItemFormModal({
 
     setSaving(true);
     setError(null);
-    setCutoutNote(null);
     try {
       let photoURL = imageURL;
-      // cutoutURL is only ever set here, from one of two sources: a fresh
-      // cutout generated from a newly-picked photo, or (when editing without
-      // picking a new photo) the item's current cutoutURL re-fetched from the
-      // server. Leaving it undefined in every other case (no photo at all, or
-      // the photo was just removed) means the payload below carries no stale
-      // value and the backend's full-replace PUT clears it correctly instead
-      // of silently wiping an untouched cutout.
+      // cutoutURL is only ever set here, when editing without picking a new
+      // photo: the item's current cutoutURL, re-fetched from the server so
+      // the payload doesn't carry a stale value that would silently wipe an
+      // untouched cutout via the backend's full-replace PUT. A newly picked
+      // photo has no cutout of its own — it's left undefined, which clears
+      // any previous cutout since the original photo it was generated from
+      // is gone.
       let cutoutURL: string | undefined;
       if (photoFile) {
         const prepared = await preparePhoto(photoFile);
         photoURL = (await uploadImage(prepared.blob, prepared.filename)).url;
-
-        setRemovingBackground(true);
-        try {
-          const cutoutSource = await downscaleForCutout(photoFile);
-          const cutoutBlob = await removeBackground(cutoutSource);
-          if (cutoutBlob) {
-            // Guarded separately from generation: a network blip on this
-            // upload must degrade the same way a failed/null cutout does
-            // (imageURL-only save), not abort the whole item save via the
-            // outer catch — the original photo already uploaded successfully
-            // above and a good cutout was already produced.
-            try {
-              cutoutURL = (await uploadImage(cutoutBlob, "cutout.png")).url;
-            } catch {
-              setCutoutNote(
-                "Couldn't save the background-removed photo — saved with the original photo only.",
-              );
-            }
-          } else {
-            setCutoutNote(
-              "Couldn't remove the background for this photo — saved with the original photo only.",
-            );
-          }
-        } finally {
-          setRemovingBackground(false);
-        }
       } else if (item && imageURL) {
         // Editing, photo untouched: preserve the existing cutoutURL exactly
         // (it isn't carried on `item`, an OrganizingItem, so re-fetch it).
@@ -432,7 +351,6 @@ export function ItemFormModal({
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to save item");
       setSaving(false);
-      setRemovingBackground(false);
     }
   };
 
@@ -456,16 +374,14 @@ export function ItemFormModal({
           </button>
           <button
             type="submit"
-            disabled={saving || recognizing || removingBackground}
+            disabled={saving || recognizing}
             className="flex flex-1 items-center justify-center rounded-full bg-cute-primary px-4 py-[13px] font-body text-sm font-semibold text-cute-primary-foreground transition hover:brightness-105 disabled:opacity-60"
           >
-            {removingBackground
-              ? "Removing background…"
-              : saving
-                ? "Saving…"
-                : item
-                  ? "Save Changes"
-                  : "Add Item"}
+            {saving
+              ? "Saving…"
+              : item
+                ? "Save Changes"
+                : "Add Item"}
           </button>
         </>
       }
@@ -578,11 +494,6 @@ export function ItemFormModal({
           )}
           {recognitionError && !recognizing && (
             <p className="font-body text-xs text-cute-danger">{recognitionError}</p>
-          )}
-          {cutoutNote && (
-            <p ref={cutoutNoteRef} className="font-body text-xs text-cute-danger">
-              {cutoutNote}
-            </p>
           )}
           {/* capture opens the camera directly on phones; without it the
               picker offers the photo library. Desktops treat both as pickers. */}

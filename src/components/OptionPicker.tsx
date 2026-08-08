@@ -186,7 +186,7 @@ export function OptionPicker({
                 }}
                 placeholder={`Search or add a ${noun}…`}
                 autoFocus
-                className="mb-1 w-full shrink-0 rounded-full border border-cute-border bg-cute-surface-alt px-3.5 py-2 font-body text-[13px] text-cute-text outline-none transition placeholder:text-cute-text-muted focus:border-cute-primary"
+                className="mb-1 w-full shrink-0 rounded-full border border-cute-border bg-cute-surface-alt px-3.5 py-2 font-body text-base text-cute-text outline-none transition placeholder:text-cute-text-muted focus:border-cute-primary"
               />
               <div className="flex max-h-44 flex-col overflow-y-auto">
                 {shown.map((option) => {

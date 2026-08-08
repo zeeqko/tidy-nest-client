@@ -27,8 +27,10 @@ interface ItemFormModalProps {
   onSaved: () => void;
 }
 
+// text-base (16px), not text-sm: iOS Safari/PWA auto-zooms the viewport when
+// focusing an input smaller than 16px, which is the "auto zoom in" bug.
 const inputClass =
-  "w-full rounded-cute-m border border-cute-border bg-cute-surface px-3.5 py-2.5 font-body text-sm text-cute-text outline-none transition focus:border-cute-primary";
+  "w-full rounded-cute-m border border-cute-border bg-cute-surface px-3.5 py-2.5 font-body text-base text-cute-text outline-none transition focus:border-cute-primary";
 
 function Field({
   label,
@@ -494,7 +496,6 @@ export function ItemFormModal({
             value={name}
             onChange={(e) => setName(e.target.value)}
             placeholder="e.g. Whole Milk"
-            autoFocus
           />
         </Field>
 

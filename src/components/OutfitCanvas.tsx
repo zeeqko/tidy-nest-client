@@ -18,6 +18,15 @@ const DESIGN_WIDTH = 400;
 const DESIGN_HEIGHT = 500;
 const MIN_SIZE = 24;
 
+/** Default footprint given to every newly-added placement (`OutfitBuilderPage`'s
+ *  `addItem`). Exported from here (rather than defined in `OutfitBuilderPage`
+ *  and imported back) to avoid a circular runtime import — this file already
+ *  imports the `PlacedItem` *type* from `OutfitBuilderPage`, but that's erased
+ *  at compile time, whereas this constant is a real value both files need at
+ *  runtime. T4's aspect-ratio fit below (see `useAspectRatioFit`) uses this to
+ *  decide whether a placement is still at its untouched default size. */
+export const DEFAULT_SIZE = 180;
+
 type TransformPatch = Pick<PlacedItem, "x" | "y" | "width" | "height" | "rotation">;
 
 interface OutfitCanvasProps {
@@ -76,6 +85,68 @@ interface PlacedNodeProps {
  *  converted back out of the node's center coordinates on every change. */
 function PlacedNode({ item, isSelected, readOnly, onSelect, onChangeTransform, registerRef }: PlacedNodeProps) {
   const image = useHtmlImage(item.cutoutURL ?? item.imageURL);
+
+  // Latest item / callback, read (not depended on) by the image-load fit
+  // effect below — the effect must only re-run when a *new* image object
+  // finishes loading (a fresh placement's photo, or a cutout swapping in
+  // later), never on every drag/resize/reorder that changes `item` without
+  // touching its `src`. Refs give the effect a stable trigger (`image`
+  // identity) while still reading current values when it does fire.
+  const itemRef = useRef(item);
+  itemRef.current = item;
+  const onChangeTransformRef = useRef(onChangeTransform);
+  onChangeTransformRef.current = onChangeTransform;
+
+  // T4: fit a placement to its image's real aspect ratio once that image
+  // loads, so a non-square photo or cutout doesn't render stretched into the
+  // fixed DEFAULT_SIZE square. Applies uniformly to a fresh photo placement,
+  // a cutout swapping in later, and an item that already had a cutoutURL at
+  // add time (which only ever fires this effect once, for that one image).
+  useEffect(() => {
+    if (readOnly || !image) return;
+    const naturalWidth = image.naturalWidth;
+    const naturalHeight = image.naturalHeight;
+    if (!naturalWidth || !naturalHeight) return;
+
+    const current = itemRef.current;
+    // Only reshape a placement still at its untouched default footprint —
+    // the cheap, stateless "the user hasn't resized/rotated/dragged this
+    // yet" check. Once it's been resized (by the user, or by an earlier run
+    // of this very effect), width/height no longer both equal DEFAULT_SIZE,
+    // so this becomes a permanent no-op for that placement — including if a
+    // cutout swaps in mid-interaction while the user is dragging it.
+    if (current.width !== DEFAULT_SIZE || current.height !== DEFAULT_SIZE) return;
+
+    // Reshape around the existing footprint: keep the longest side (== the
+    // untouched DEFAULT_SIZE here, since width/height are equal) and derive
+    // the other side from the image's aspect ratio, rather than growing or
+    // shrinking the piece's overall size.
+    const longestSide = Math.max(current.width, current.height);
+    const aspect = naturalWidth / naturalHeight;
+    const width = aspect >= 1 ? longestSide : longestSide * aspect;
+    const height = aspect >= 1 ? longestSide / aspect : longestSide;
+
+    // No-op guard for a square (or near-square) image: avoids emitting an
+    // identical transform (e.g. a cutout swapping in with essentially the
+    // same aspect ratio as the photo it was generated from, which already
+    // triggered this same fit once).
+    if (Math.abs(width - current.width) < 0.5 && Math.abs(height - current.height) < 0.5) return;
+
+    // Preserve the center point so the piece doesn't visually jump position
+    // when it reshapes to its real aspect ratio.
+    const centerX = current.x + current.width / 2;
+    const centerY = current.y + current.height / 2;
+    onChangeTransformRef.current({
+      x: centerX - width / 2,
+      y: centerY - height / 2,
+      width,
+      height,
+      rotation: current.rotation,
+    });
+    // Deliberately keyed only on `image` (a new object each time a new src
+    // finishes loading) and `readOnly` — see the comment above the refs.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [image, readOnly]);
 
   const handleDragEnd = (event: Konva.KonvaEventObject<DragEvent>) => {
     const node = event.target;

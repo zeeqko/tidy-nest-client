@@ -5,15 +5,34 @@ import { MobileTopBar } from "./MobileTopBar";
 import { FilterPill } from "./FilterPill";
 import { LookCard } from "./LookCard";
 import { EmptyState } from "./EmptyState";
+import { ConfirmDeleteModal } from "./ConfirmDeleteModal";
 import { useLooks } from "../hooks/useLooks";
 import { seedOccasions } from "../data/occasions";
+import { deleteLook, type ApiLook } from "../api/looks";
 
 export function StyleBookPage() {
-  const { looks, loading, error } = useLooks();
+  const { looks, loading, error, refresh } = useLooks();
   const [activeOccasion, setActiveOccasion] = useState("All");
+  const [deleteTarget, setDeleteTarget] = useState<ApiLook | null>(null);
+  const [deleteError, setDeleteError] = useState<string | null>(null);
   const navigate = useNavigate();
 
   const createLook = () => navigate("/stylebook/create");
+  const selectLook = (look: ApiLook) => navigate(`/stylebook/${look.id}`);
+  const editLook = (look: ApiLook) => navigate(`/stylebook/${look.id}/edit`);
+
+  const confirmDelete = async () => {
+    if (!deleteTarget) return;
+    try {
+      await deleteLook(deleteTarget.id);
+      setDeleteTarget(null);
+      setDeleteError(null);
+      await refresh();
+    } catch (err) {
+      setDeleteError(err instanceof Error ? err.message : "Failed to delete this look");
+      setDeleteTarget(null);
+    }
+  };
 
   const occasions = useMemo(() => {
     const extra = Array.from(
@@ -107,13 +126,32 @@ export function StyleBookPage() {
             action={{ label: "Clear filter", onClick: clearFilter }}
           />
         ) : (
-          <div className="grid w-full grid-cols-2 gap-3 sm:gap-6">
+          <div className="grid w-full grid-cols-2 gap-3 sm:grid-cols-3 sm:gap-6 md:grid-cols-4 xl:grid-cols-5">
             {filteredLooks.map((look) => (
-              <LookCard key={look.id} look={look} />
+              <LookCard
+                key={look.id}
+                look={look}
+                onSelect={selectLook}
+                onEdit={editLook}
+                onDelete={setDeleteTarget}
+              />
             ))}
           </div>
         )}
+
+        {deleteError && (
+          <p className="w-full font-body text-sm text-cute-danger">{deleteError}</p>
+        )}
       </div>
+
+      {deleteTarget && (
+        <ConfirmDeleteModal
+          title={`Delete "${deleteTarget.name}"?`}
+          message="This removes the look from your Style Book. This can't be undone."
+          onCancel={() => setDeleteTarget(null)}
+          onConfirm={confirmDelete}
+        />
+      )}
     </div>
   );
 }

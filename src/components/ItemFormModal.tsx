@@ -5,6 +5,7 @@ import { createItem, getItem, updateItem } from "../api/inventory";
 import { recognizeItem } from "../api/recognition";
 import { uploadImage } from "../api/uploads";
 import { tagChip } from "../data/presentation";
+import { preparePhoto } from "../lib/image";
 import type { OrganizingItem } from "../types";
 import { ModalShell } from "./ModalShell";
 import { OptionPicker } from "./OptionPicker";
@@ -46,33 +47,6 @@ function Field({
       {helper && <span className="font-body text-xs text-cute-text-muted">{helper}</span>}
     </label>
   );
-}
-
-const MAX_PHOTO_DIMENSION = 1280;
-
-/**
- * Downscales a photo to a phone-friendly upload size (JPEG, longest side
- * MAX_PHOTO_DIMENSION). Falls back to the original file if decoding fails.
- */
-async function preparePhoto(file: File): Promise<{ blob: Blob; filename: string }> {
-  try {
-    const bitmap = await createImageBitmap(file);
-    const scale = Math.min(1, MAX_PHOTO_DIMENSION / Math.max(bitmap.width, bitmap.height));
-    const canvas = document.createElement("canvas");
-    canvas.width = Math.round(bitmap.width * scale);
-    canvas.height = Math.round(bitmap.height * scale);
-    const context = canvas.getContext("2d");
-    if (!context) throw new Error("no canvas context");
-    context.drawImage(bitmap, 0, 0, canvas.width, canvas.height);
-    bitmap.close();
-    const blob = await new Promise<Blob | null>((resolve) =>
-      canvas.toBlob(resolve, "image/jpeg", 0.82),
-    );
-    if (!blob) throw new Error("canvas export failed");
-    return { blob, filename: "photo.jpg" };
-  } catch {
-    return { blob: file, filename: file.name || "photo" };
-  }
 }
 
 export function ItemFormModal({

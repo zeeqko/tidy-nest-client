@@ -5,38 +5,8 @@ import { MobileTopBar } from "./MobileTopBar";
 import { OutfitCanvas } from "./OutfitCanvas";
 import { ConfirmDeleteModal } from "./ConfirmDeleteModal";
 import { useLook } from "../hooks/useLook";
-import { deleteLook, type ApiLookItem } from "../api/looks";
-import { fallbackPreset } from "../data/presentation";
-import type { PlacedItem } from "./OutfitBuilderPage";
-
-/** Maps a saved look's `ApiLookItem`s onto the canvas's `PlacedItem` shape.
- *  `ApiLookItem` has no per-placement `id`, so one is synthesised from the
- *  item's index in the (stable, backend-ordered) array — deterministic
- *  across re-renders, unlike `crypto.randomUUID()`. It also carries no
- *  icon/colour fallback, since the response has no category info to derive
- *  one from; every placed item uses the shared `fallbackPreset` for that
- *  case (only ever shown while `cutoutURL`/`imageURL` are both empty, since
- *  `OutfitCanvas` prefers the image over the fallback tile whenever either
- *  is present). Exported so T10's edit flow can reuse the same mapping
- *  instead of duplicating it. */
-export function toPlacedItems(items: ApiLookItem[]): PlacedItem[] {
-  return items.map((item, index) => ({
-    id: `${item.itemId}-${index}`,
-    itemId: item.itemId,
-    x: item.x,
-    y: item.y,
-    width: item.width,
-    height: item.height,
-    rotation: item.rotation,
-    zIndex: item.zIndex,
-    name: item.name ?? "Item",
-    imageURL: item.imageURL,
-    cutoutURL: item.cutoutURL,
-    icon: fallbackPreset.icon,
-    iconBg: fallbackPreset.iconBg,
-    iconColor: fallbackPreset.iconColor,
-  }));
-}
+import { deleteLook } from "../api/looks";
+import { toPlacedItems } from "../lib/lookPlacements";
 
 /** Occasion badge treatment lifted from `LookCard`'s thumbnail overlay,
  *  minus the absolute positioning that only makes sense pinned over an

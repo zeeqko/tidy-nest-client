@@ -26,6 +26,7 @@ function App() {
             <Route path="/category/:categoryId" element={<CategoryPage />} />
             <Route path="/stylebook" element={<StyleBookPage />} />
             <Route path="/stylebook/create" element={<OutfitBuilderPage />} />
+            <Route path="/stylebook/:id/edit" element={<OutfitBuilderPage />} />
             <Route path="/stylebook/:id" element={<LookDetailPage />} />
             <Route path="*" element={<NotFoundPage />} />
           </Route>

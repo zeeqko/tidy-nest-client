@@ -172,7 +172,7 @@ function FullCard({ item, chipMode = "category", onSelect, onEdit, onDelete }: I
 
         <LocationLine item={item} />
 
-        <div className="flex w-full flex-wrap items-center justify-between gap-1.5">
+        <div className="mt-auto flex w-full flex-wrap items-center justify-between gap-1.5">
           {item.status ? (
             <span
               className="min-w-0 max-w-full truncate rounded-full px-3 py-[5px] font-body text-[11px] font-semibold"

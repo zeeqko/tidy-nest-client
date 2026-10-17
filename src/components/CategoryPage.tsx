@@ -10,6 +10,8 @@ import { FilterPill } from "./FilterPill";
 import { MobileTopBar } from "./MobileTopBar";
 import { ItemCard } from "./ItemCard";
 import { ItemDetailModal } from "./ItemDetailModal";
+import { AddItemChooser } from "./AddItemChooser";
+import { BulkAddItemsModal } from "./BulkAddItemsModal";
 import { ItemFormModal } from "./ItemFormModal";
 import { ConfirmDeleteModal } from "./ConfirmDeleteModal";
 import { ManageCategoriesModal } from "./ManageCategoriesModal";
@@ -31,9 +33,13 @@ export function CategoryPage() {
   const [activeTag, setActiveTag] = useState("all");
   const [selectedItem, setSelectedItem] = useState<OrganizingItem | null>(null);
   const [manageOpen, setManageOpen] = useState(false);
+  const [chooserOpen, setChooserOpen] = useState(false);
   const [formOpen, setFormOpen] = useState(false);
+  const [bulkOpen, setBulkOpen] = useState(false);
   const [editingItem, setEditingItem] = useState<OrganizingItem | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<OrganizingItem | null>(null);
+
+  const openAddChooser = () => setChooserOpen(true);
 
   const openEdit = (item: OrganizingItem) => {
     setSelectedItem(null);
@@ -149,10 +155,7 @@ export function CategoryPage() {
             </button>
             <button
               type="button"
-              onClick={() => {
-                setEditingItem(null);
-                setFormOpen(true);
-              }}
+              onClick={openAddChooser}
               className="flex items-center gap-1.5 rounded-full bg-cute-primary px-4 py-2.5 font-body text-sm font-medium text-cute-primary-foreground transition hover:brightness-105"
             >
               <Plus size={16} />
@@ -230,10 +233,7 @@ export function CategoryPage() {
             body={`Add your first item to start organizing ${category.label.toLowerCase()}.`}
             action={{
               label: "Add your first item",
-              onClick: () => {
-                setEditingItem(null);
-                setFormOpen(true);
-              },
+              onClick: openAddChooser,
             }}
           />
         ) : filteredItems.length === 0 ? (
@@ -282,6 +282,20 @@ export function CategoryPage() {
           onConfirm={confirmDelete}
         />
       )}
+      {chooserOpen && (
+        <AddItemChooser
+          onClose={() => setChooserOpen(false)}
+          onChooseSingle={() => {
+            setChooserOpen(false);
+            setEditingItem(null);
+            setFormOpen(true);
+          }}
+          onChooseBulk={() => {
+            setChooserOpen(false);
+            setBulkOpen(true);
+          }}
+        />
+      )}
       {formOpen && (
         <ItemFormModal
           item={editingItem ?? undefined}
@@ -289,6 +303,14 @@ export function CategoryPage() {
           initialCategoryId={Number(category.id)}
           apiCategories={apiCategories}
           onClose={() => setFormOpen(false)}
+          onSaved={refresh}
+        />
+      )}
+      {bulkOpen && (
+        <BulkAddItemsModal
+          apiCategories={apiCategories}
+          initialCategoryId={Number(category.id)}
+          onClose={() => setBulkOpen(false)}
           onSaved={refresh}
         />
       )}

@@ -82,7 +82,7 @@ export function LookDetailPage() {
   const placedItems = toPlacedItems(look.items);
 
   return (
-    <div className="w-full px-5 pt-2 pb-10 sm:px-10">
+    <div className="w-full px-5 pt-2 pb-28 sm:px-10 sm:pb-10">
       <div className="mx-auto flex w-full max-w-[1100px] flex-col gap-4 sm:gap-9">
         <MobileTopBar title={look.name} backTo="/stylebook" />
 

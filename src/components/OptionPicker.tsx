@@ -37,6 +37,7 @@ interface PanelRect {
 
 const PANEL_GAP = 6;
 const PANEL_PREFERRED_HEIGHT = 320;
+const PANEL_MIN_WIDTH = 260;
 const VIEWPORT_MARGIN = 8;
 
 /**
@@ -69,6 +70,24 @@ export function OptionPicker({
     onOpenChange?.(open);
   }, [open, onOpenChange]);
 
+  // If this picker unmounts while open, tell the parent it closed so it
+  // doesn't keep a stale "open" key (which would block its Escape/backdrop
+  // close). Refs keep this unmount-only, so it never fires on open/close
+  // toggles or callback identity changes, and is a no-op for StrictMode's
+  // simulated unmount (nothing is open yet at that point).
+  const openRef = useRef(false);
+  const onOpenChangeRef = useRef(onOpenChange);
+  useEffect(() => {
+    openRef.current = open;
+    onOpenChangeRef.current = onOpenChange;
+  }, [open, onOpenChange]);
+  useEffect(
+    () => () => {
+      if (openRef.current) onOpenChangeRef.current?.(false);
+    },
+    [],
+  );
+
   // Position the portaled panel from the trigger's viewport rect, and keep it
   // aligned while the modal body (or the page) scrolls or the window resizes.
   // Flips above the trigger when there isn't enough room below.
@@ -82,17 +101,26 @@ export function OptionPicker({
       if (!r) return;
       const spaceBelow = window.innerHeight - r.bottom - VIEWPORT_MARGIN;
       const spaceAbove = r.top - VIEWPORT_MARGIN;
+      // Never narrower than the trigger, but wide enough that the search
+      // placeholder ("Search or add a subcategory…") doesn't clip in a
+      // half-width grid cell — clamped so it still fits the viewport with
+      // VIEWPORT_MARGIN to spare on narrow screens.
+      const width = Math.max(
+        r.width,
+        Math.min(PANEL_MIN_WIDTH, window.innerWidth - VIEWPORT_MARGIN * 2),
+      );
+      const left = Math.min(r.left, window.innerWidth - width - VIEWPORT_MARGIN);
       if (spaceBelow < 200 && spaceAbove > spaceBelow) {
         setRect({
-          left: r.left,
-          width: r.width,
+          left,
+          width,
           bottom: window.innerHeight - r.top + PANEL_GAP,
           maxHeight: Math.min(PANEL_PREFERRED_HEIGHT, spaceAbove),
         });
       } else {
         setRect({
-          left: r.left,
-          width: r.width,
+          left,
+          width,
           top: r.bottom + PANEL_GAP,
           maxHeight: Math.min(PANEL_PREFERRED_HEIGHT, spaceBelow),
         });
@@ -207,7 +235,7 @@ export function OptionPicker({
                 })}
                 {shown.length === 0 && !trimmed && (
                   <p className="px-3 py-2 font-body text-[13px] text-cute-text-muted">
-                    No {noun}s yet — type a name to add one.
+                    No {/[^aeiou]y$/.test(noun) ? `${noun.slice(0, -1)}ies` : `${noun}s`} yet — type a name to add one.
                   </p>
                 )}
                 {trimmed && !exactExists && (

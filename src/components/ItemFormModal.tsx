@@ -71,7 +71,10 @@ export function ItemFormModal({
   });
   const [subcategory, setSubcategory] = useState(item?.subcategory ?? "");
   const [location, setLocation] = useState(item?.location ?? "");
-  const [quantity, setQuantity] = useState(item?.quantity ?? 1);
+  // Kept as a string so the field can be emptied while typing (e.g. to type
+  // "12" you must pass through ""); clamped to a valid integer >= 1 on blur
+  // and again when building the submit payload.
+  const [quantity, setQuantity] = useState(String(item?.quantity ?? 1));
   const [tags, setTags] = useState<string[]>(item?.tags.map((t) => t.label) ?? []);
   const [notes, setNotes] = useState(item?.notes ?? "");
   const [opensOn, setOpensOn] = useState(item?.opensOn ?? "");
@@ -266,6 +269,16 @@ export function ItemFormModal({
 
   const tagSuggestions = selectedCategory?.tags ?? [];
 
+  // Show the category's own first subcategory/tag as the example instead of
+  // a hardcoded food example (e.g. "Dairy") that made no sense on categories
+  // like Clothes. Falls back to generic add-copy when the category has none
+  // yet (or hasn't loaded), never to the old hardcoded strings.
+  const subcategoryPlaceholder = subcategorySuggestions[0]
+    ? `e.g. ${subcategorySuggestions[0].name}`
+    : "Add a subcategory";
+
+  const tagPlaceholder = tagSuggestions[0] ? `e.g. ${tagSuggestions[0].name}` : "Add a tag";
+
   // Food/Makeup-style categories track dates by default (reminderOnExpiry);
   // everything else stays collapsed behind the disclosure until the user
   // opts in. Switching categories preserves any values already typed — they
@@ -309,7 +322,7 @@ export function ItemFormModal({
         category: selectedCategory?.name ?? "",
         subcategory: subcategory.trim(),
         location: location.trim(),
-        quantity,
+        quantity: Math.max(1, Number(quantity) || 0),
         tags: tags.map((t) => ({ name: t })),
         notes: notes.trim(),
         opensOn,
@@ -494,7 +507,10 @@ export function ItemFormModal({
           <input
             className={inputClass}
             value={name}
-            onChange={(e) => setName(e.target.value)}
+            onChange={(e) => {
+              setName(e.target.value);
+              setError(null);
+            }}
             placeholder="e.g. Whole Milk"
           />
         </Field>
@@ -521,7 +537,7 @@ export function ItemFormModal({
             <OptionPicker
               options={subcategorySuggestions}
               selected={subcategory ? [subcategory] : []}
-              placeholder="e.g. Dairy"
+              placeholder={subcategoryPlaceholder}
               noun="subcategory"
               onSelect={setSubcategory}
               onOpenChange={setSubcategoryPickerOpen}
@@ -536,7 +552,10 @@ export function ItemFormModal({
               type="number"
               min={1}
               value={quantity}
-              onChange={(e) => setQuantity(Math.max(1, Number(e.target.value)))}
+              onChange={(e) => setQuantity(e.target.value.replace(/[^0-9]/g, ""))}
+              onBlur={() =>
+                setQuantity((current) => String(Math.max(1, Number(current) || 0)))
+              }
             />
           </Field>
           <Field label="Tags (optional)">
@@ -544,7 +563,7 @@ export function ItemFormModal({
               options={tagSuggestions}
               selected={tags}
               multiple
-              placeholder="e.g. Fresh"
+              placeholder={tagPlaceholder}
               noun="tag"
               onSelect={(name) =>
                 setTags((current) =>
@@ -585,13 +604,13 @@ export function ItemFormModal({
 
         {datesVisible ? (
           <div className="flex w-full flex-col gap-2">
-            <div className="grid w-full grid-cols-2 gap-4">
+            <div className="grid w-full grid-cols-1 gap-4 sm:grid-cols-2">
               <Field
                 label="Opened On"
                 helper="For items with a shelf life once opened, like food or makeup."
               >
                 <input
-                  className={inputClass}
+                  className={`${inputClass} min-w-0`}
                   type="date"
                   value={opensOn}
                   onChange={(e) => setOpensOn(e.target.value)}
@@ -599,7 +618,7 @@ export function ItemFormModal({
               </Field>
               <Field label="Expiry Date (optional)">
                 <input
-                  className={inputClass}
+                  className={`${inputClass} min-w-0`}
                   type="date"
                   value={expiryDate}
                   onChange={(e) => setExpiryDate(e.target.value)}

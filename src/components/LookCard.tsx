@@ -161,7 +161,9 @@ export function LookCard({ look, onSelect, onEdit, onDelete }: LookCardProps) {
                       className={`h-full w-full rounded-cute-s ${item.cutoutURL ? "object-contain" : "object-cover"}`}
                     />
                   ) : (
-                    <div className="h-full w-full rounded-cute-s bg-cute-surface-alt" />
+                    <div className="flex h-full w-full items-center justify-center rounded-cute-s bg-cute-surface-alt text-cute-text-muted">
+                      <Shirt size={16} />
+                    </div>
                   )}
                 </div>
               );

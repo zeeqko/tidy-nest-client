@@ -6,6 +6,8 @@ import { CategoryFilters } from "./CategoryFilters";
 import { SubcategoryFilters } from "./SubcategoryFilters";
 import { ItemsGrid } from "./ItemsGrid";
 import { ItemDetailModal } from "./ItemDetailModal";
+import { AddItemChooser } from "./AddItemChooser";
+import { BulkAddItemsModal } from "./BulkAddItemsModal";
 import { ItemFormModal } from "./ItemFormModal";
 import { ConfirmDeleteModal } from "./ConfirmDeleteModal";
 import { deleteItem } from "../api/inventory";
@@ -20,7 +22,9 @@ export function AllItemsPage() {
   const [activeCategory, setActiveCategory] = useState("all");
   const [activeSubcategory, setActiveSubcategory] = useState("all");
   const [selectedItem, setSelectedItem] = useState<OrganizingItem | null>(null);
+  const [chooserOpen, setChooserOpen] = useState(false);
   const [formOpen, setFormOpen] = useState(false);
+  const [bulkOpen, setBulkOpen] = useState(false);
   const [editingItem, setEditingItem] = useState<OrganizingItem | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<OrganizingItem | null>(null);
 
@@ -31,10 +35,7 @@ export function AllItemsPage() {
     setActiveSubcategory("all");
   };
 
-  const openCreate = () => {
-    setEditingItem(null);
-    setFormOpen(true);
-  };
+  const openCreate = () => setChooserOpen(true);
 
   const openEdit = (item: OrganizingItem) => {
     setSelectedItem(null);
@@ -114,6 +115,8 @@ export function AllItemsPage() {
             items={filteredItems}
             onSelect={setSelectedItem}
             onClearFilters={hasActiveFilters ? clearFilters : undefined}
+            onEdit={openEdit}
+            onDelete={setDeleteTarget}
           />
         )}
       </div>
@@ -125,11 +128,32 @@ export function AllItemsPage() {
           onDelete={setDeleteTarget}
         />
       )}
+      {chooserOpen && (
+        <AddItemChooser
+          onClose={() => setChooserOpen(false)}
+          onChooseSingle={() => {
+            setChooserOpen(false);
+            setEditingItem(null);
+            setFormOpen(true);
+          }}
+          onChooseBulk={() => {
+            setChooserOpen(false);
+            setBulkOpen(true);
+          }}
+        />
+      )}
       {formOpen && (
         <ItemFormModal
           item={editingItem ?? undefined}
           apiCategories={apiCategories}
           onClose={() => setFormOpen(false)}
+          onSaved={refresh}
+        />
+      )}
+      {bulkOpen && (
+        <BulkAddItemsModal
+          apiCategories={apiCategories}
+          onClose={() => setBulkOpen(false)}
           onSaved={refresh}
         />
       )}

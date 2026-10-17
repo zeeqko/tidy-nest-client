@@ -29,7 +29,7 @@ export function StatCard({ stat, accent }: StatCardProps) {
       <p className="line-clamp-2 font-heading text-[15px] font-semibold break-words text-cute-text sm:text-[19px]">
         {stat.value}
       </p>
-      <p className="font-body text-[11px] text-cute-text-muted">
+      <p className="mt-auto font-body text-[11px] text-cute-text-muted">
         <span className="sm:hidden">{stat.label}</span>
         <span className="hidden sm:inline">{stat.helper}</span>
       </p>

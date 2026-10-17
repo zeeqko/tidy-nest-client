@@ -22,15 +22,15 @@ export function DetailsList({ rows }: DetailsListProps) {
                 index < rows.length - 1 ? "border-b border-cute-border" : ""
               }`}
             >
-              <div className="flex min-w-0 items-center gap-2.5">
+              <div className="flex shrink-0 items-center gap-2.5">
                 <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-cute-surface-alt text-cute-secondary-foreground sm:h-auto sm:w-auto sm:bg-transparent sm:text-cute-text-muted">
                   <Icon size={16} />
                 </span>
-                <span className="truncate font-body text-[13px] text-cute-text-muted sm:text-sm">
+                <span className="font-body text-[13px] text-cute-text-muted sm:text-sm">
                   {row.label}
                 </span>
               </div>
-              <span className="text-right font-body text-[13px] font-semibold text-cute-text sm:text-sm">
+              <span className="min-w-0 flex-1 text-right font-body text-[13px] font-semibold break-words text-cute-text sm:text-sm">
                 {row.value}
               </span>
             </div>

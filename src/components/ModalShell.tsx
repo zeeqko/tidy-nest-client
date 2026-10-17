@@ -1,6 +1,15 @@
-import { useEffect } from "react";
+import { useEffect, useId, useRef } from "react";
 import type { FormEvent, MouseEvent, ReactNode, Ref } from "react";
 import { ChevronLeft, X } from "lucide-react";
+
+const FOCUSABLE_SELECTOR =
+  'a[href], button:not([disabled]), textarea:not([disabled]), input:not([disabled]), select:not([disabled]), [tabindex]:not([tabindex="-1"])';
+
+/** Shared across every ModalShell instance so nested/stacked modals (e.g. a
+ *  form modal opened from a detail modal) only lock body scroll once and
+ *  only restore it once the last one closes. */
+let openModalCount = 0;
+let savedBodyOverflow = "";
 
 /**
  * Single source of truth for every modal/portal layer's stacking order.
@@ -128,6 +137,12 @@ export function ModalShell({
   belowBottomNav,
   children,
 }: ModalShellPageProps) {
+  const titleId = useId();
+  const cardRef = useRef<HTMLElement | null>(null);
+  const setCardRef = (node: HTMLElement | null) => {
+    cardRef.current = node;
+  };
+
   useEffect(() => {
     const handleKeyDown = (event: KeyboardEvent) => {
       if (event.key !== "Escape") return;
@@ -137,6 +152,51 @@ export function ModalShell({
     document.addEventListener("keydown", handleKeyDown);
     return () => document.removeEventListener("keydown", handleKeyDown);
   }, [onClose, closeGuard]);
+
+  // Lock background scroll while any modal is open (nested modals share one
+  // counter so the outer one's lock survives an inner one closing first).
+  useEffect(() => {
+    if (openModalCount === 0) {
+      savedBodyOverflow = document.body.style.overflow;
+      document.body.style.overflow = "hidden";
+    }
+    openModalCount += 1;
+    return () => {
+      openModalCount -= 1;
+      // Restore whenever the last open modal goes away, regardless of which
+      // one that is (or whether several unmount in the same commit).
+      if (openModalCount === 0) document.body.style.overflow = savedBodyOverflow;
+    };
+  }, []);
+
+  // Trap Tab focus inside the modal card and restore it to whatever had
+  // focus before opening, once this modal closes.
+  useEffect(() => {
+    const card = cardRef.current;
+    if (!card) return;
+    const previouslyFocused = document.activeElement as HTMLElement | null;
+    const getFocusable = () => Array.from(card.querySelectorAll<HTMLElement>(FOCUSABLE_SELECTOR));
+    (getFocusable()[0] ?? card).focus();
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key !== "Tab") return;
+      const items = getFocusable();
+      if (items.length === 0) return;
+      const first = items[0];
+      const last = items[items.length - 1];
+      if (event.shiftKey && document.activeElement === first) {
+        event.preventDefault();
+        last.focus();
+      } else if (!event.shiftKey && document.activeElement === last) {
+        event.preventDefault();
+        first.focus();
+      }
+    };
+    card.addEventListener("keydown", handleKeyDown);
+    return () => {
+      card.removeEventListener("keydown", handleKeyDown);
+      previouslyFocused?.focus?.();
+    };
+  }, []);
 
   const handleBackdropClick = (event: MouseEvent<HTMLDivElement>) => {
     if (event.target !== event.currentTarget) return;
@@ -156,7 +216,11 @@ export function ModalShell({
         onClick={handleBackdropClick}
       >
         <div
-          className={`flex w-full max-w-[420px] flex-col items-center gap-4 rounded-cute-l bg-cute-surface p-8 text-center ${CARD_SHADOW}`}
+          ref={setCardRef}
+          role="alertdialog"
+          aria-modal="true"
+          tabIndex={-1}
+          className={`flex w-full max-w-[420px] flex-col items-center gap-4 rounded-cute-l bg-cute-surface p-8 text-center outline-none ${CARD_SHADOW}`}
         >
           {children}
         </div>
@@ -185,7 +249,9 @@ export function ModalShell({
           {titleAs === "div" ? (
             <div className={titleClassName ?? DEFAULT_TITLE_CLASS}>{title}</div>
           ) : (
-            <h2 className={titleClassName ?? DEFAULT_TITLE_CLASS}>{title}</h2>
+            <h2 id={titleId} className={titleClassName ?? DEFAULT_TITLE_CLASS}>
+              {title}
+            </h2>
           )}
           {subtitle && (
             <p className="hidden font-body text-[13px] text-cute-text-muted sm:block">
@@ -219,14 +285,28 @@ export function ModalShell({
     </>
   );
 
+  const dialogProps = {
+    role: "dialog" as const,
+    "aria-modal": true,
+    "aria-labelledby": titleAs === "h2" ? titleId : undefined,
+    tabIndex: -1,
+  };
+
   return (
     <div className={`${PAGE_OVERLAY_CLASS} ${zIndexClass}`} onClick={handleBackdropClick}>
       {as === "form" ? (
-        <form onSubmit={onSubmit} className={cardClassName}>
+        <form
+          ref={setCardRef}
+          onSubmit={onSubmit}
+          className={`${cardClassName} outline-none`}
+          {...dialogProps}
+        >
           {cardContent}
         </form>
       ) : (
-        <div className={cardClassName}>{cardContent}</div>
+        <div ref={setCardRef} className={`${cardClassName} outline-none`} {...dialogProps}>
+          {cardContent}
+        </div>
       )}
     </div>
   );

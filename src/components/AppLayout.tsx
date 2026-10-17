@@ -3,6 +3,8 @@ import { Outlet, useLocation, useParams } from "react-router-dom";
 import { HomeTopBar } from "./HomeTopBar";
 import { NavMenu } from "./NavMenu";
 import { BottomNav } from "./BottomNav";
+import { AddItemChooser } from "./AddItemChooser";
+import { BulkAddItemsModal } from "./BulkAddItemsModal";
 import { ItemFormModal } from "./ItemFormModal";
 import { ManageCategoriesModal } from "./ManageCategoriesModal";
 import { useCategories } from "../hooks/useCategories";
@@ -10,17 +12,42 @@ import { useCategories } from "../hooks/useCategories";
 /** Fetches categories only while the layout-level add-item modal is open.
  *  Route-aware: on `/category/:categoryId` it preselects that category, the
  *  same way `CategoryPage`'s own (now-removed) header add button used to —
- *  this is the single add-item entry point on mobile category pages. */
-function LayoutItemForm({ onClose, onSaved }: { onClose: () => void; onSaved: () => void }) {
+ *  this is the single add-item entry point on mobile category pages.
+ *
+ *  Opens `AddItemChooser` first; "Add one item" opens today's
+ *  `ItemFormModal` unchanged (same preselection, same `onSaved`), "Add
+ *  multiple photos" opens `BulkAddItemsModal` with the same preselection. */
+function LayoutAddItemFlow({ onClose, onSaved }: { onClose: () => void; onSaved: () => void }) {
   const { apiCategories } = useCategories();
   const { categoryId } = useParams<{ categoryId?: string }>();
   const initialCategoryId = categoryId ? Number(categoryId) : undefined;
+  const [mode, setMode] = useState<"choose" | "single" | "bulk">("choose");
+
+  if (mode === "bulk") {
+    return (
+      <BulkAddItemsModal
+        apiCategories={apiCategories}
+        initialCategoryId={initialCategoryId}
+        onClose={onClose}
+        onSaved={onSaved}
+      />
+    );
+  }
+  if (mode === "single") {
+    return (
+      <ItemFormModal
+        apiCategories={apiCategories}
+        initialCategoryId={initialCategoryId}
+        onClose={onClose}
+        onSaved={onSaved}
+      />
+    );
+  }
   return (
-    <ItemFormModal
-      apiCategories={apiCategories}
-      initialCategoryId={initialCategoryId}
+    <AddItemChooser
       onClose={onClose}
-      onSaved={onSaved}
+      onChooseSingle={() => setMode("single")}
+      onChooseBulk={() => setMode("bulk")}
     />
   );
 }
@@ -76,7 +103,7 @@ export function AppLayout() {
         />
       )}
       {addItemOpen && (
-        <LayoutItemForm onClose={() => setAddItemOpen(false)} onSaved={reloadPage} />
+        <LayoutAddItemFlow onClose={() => setAddItemOpen(false)} onSaved={reloadPage} />
       )}
     </div>
   );

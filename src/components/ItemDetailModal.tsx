@@ -1,4 +1,4 @@
-import { ChevronRight, Ellipsis } from "lucide-react";
+import { ChevronRight } from "lucide-react";
 import type { OrganizingItem } from "../types";
 import { StatCard } from "./StatCard";
 import { DetailsList } from "./DetailsList";
@@ -16,8 +16,8 @@ const STAT_ACCENTS = [
 interface ItemDetailModalProps {
   item: OrganizingItem;
   onClose: () => void;
-  onEdit?: (item: OrganizingItem) => void;
-  onDelete?: (item: OrganizingItem) => void;
+  onEdit: (item: OrganizingItem) => void;
+  onDelete: (item: OrganizingItem) => void;
 }
 
 /** Full-screen detail page on mobile, centered modal on sm+ (per UI.pen). */
@@ -28,66 +28,57 @@ export function ItemDetailModal({ item, onClose, onEdit, onDelete }: ItemDetailM
     <ModalShell
       level="raised"
       onClose={onClose}
-      maxWidthClassName="sm:max-w-[620px]"
-      bodyClassName="gap-6 px-5 py-4 sm:p-9 sm:pt-6"
+      maxWidthClassName="sm:max-w-[38.75rem]"
+      bodyClassName="gap-6 px-5 py-4 sm:p-9 sm:pt-6 sm:[mask-image:linear-gradient(to_bottom,black_calc(100%-1.5rem),transparent)]"
+      bodyLabel="Item details"
       titleAs="div"
       titleClassName="flex min-w-0 items-center gap-1.5"
       title={
         <>
-          <span className="truncate font-body text-[13px] text-cute-text-muted">
+          <span className="truncate font-body text-cute-13 text-cute-text-muted">
             {item.category.label}
           </span>
           <ChevronRight size={12} className="shrink-0 text-cute-text-muted" />
-          <span className="truncate font-body text-[13px] font-semibold text-cute-text">
+          <span className="truncate font-body text-cute-13 font-semibold text-cute-text">
             {item.subcategory}
           </span>
         </>
       }
-      headerRight={
-        <button
-          type="button"
-          aria-label="More options"
-          className="flex h-9 w-9 items-center justify-center rounded-full bg-cute-surface-alt text-cute-text transition hover:brightness-95"
-        >
-          <Ellipsis size={16} />
-        </button>
-      }
-      footer={<DetailActions onEdit={() => onEdit?.(item)} onDelete={() => onDelete?.(item)} />}
-      footerClassName="w-full shrink-0 border-t border-cute-border bg-cute-surface px-5 pt-3.5 pb-[calc(1rem+env(safe-area-inset-bottom))] sm:hidden"
+      footer={<DetailActions onEdit={() => onEdit(item)} onDelete={() => onDelete(item)} />}
     >
       <div className="flex w-full flex-col items-center gap-4 text-center sm:flex-row sm:items-center sm:gap-5 sm:text-left">
         {item.imageURL ? (
           <img
             src={item.imageURL}
             alt={item.name}
-            className="h-[120px] w-[120px] shrink-0 rounded-cute-l object-cover sm:h-[150px] sm:w-[150px]"
+            className="h-[7.5rem] w-[7.5rem] shrink-0 rounded-cute-l object-cover sm:h-[9.375rem] sm:w-[9.375rem]"
           />
         ) : (
           <div
-            className="flex h-[120px] w-[120px] shrink-0 items-center justify-center rounded-cute-l sm:h-[150px] sm:w-[150px]"
+            className="flex h-[7.5rem] w-[7.5rem] shrink-0 items-center justify-center rounded-cute-l sm:h-[9.375rem] sm:w-[9.375rem]"
             style={{ backgroundColor: item.iconBg }}
           >
             <Icon size={48} color={item.iconColor} />
           </div>
         )}
-        <div className="flex flex-col items-center gap-2.5 sm:flex-1 sm:items-start">
-          <h2 className="font-heading text-2xl font-semibold text-cute-text sm:text-[28px]">
+        <div className="flex min-w-0 max-w-full flex-col items-center gap-2.5 sm:flex-1 sm:items-start">
+          <h2 className="max-w-full font-heading [overflow-wrap:anywhere] text-2xl font-semibold text-cute-text sm:text-cute-28">
             {item.name}
           </h2>
           <div className="flex flex-wrap items-center justify-center gap-2 sm:justify-start">
             <span
-              className="rounded-full px-3.5 py-1.5 font-body text-xs font-bold sm:px-3 sm:py-[5px] sm:font-semibold"
+              className="rounded-full px-3.5 py-1.5 font-body text-xs font-bold sm:px-3 sm:py-[0.3125rem] sm:font-semibold"
               style={{ backgroundColor: item.category.bg, color: item.category.fg }}
             >
               {item.category.label}
             </span>
-            <span className="rounded-full bg-cute-surface-alt px-3.5 py-1.5 font-body text-xs font-semibold text-cute-text sm:px-3 sm:py-[5px]">
+            <span className="rounded-full bg-cute-surface-alt px-3.5 py-1.5 font-body text-xs font-semibold text-cute-text sm:px-3 sm:py-[0.3125rem]">
               {item.subcategory}
             </span>
             {item.tags.map((tag) => (
               <span
                 key={tag.label}
-                className="rounded-full px-3.5 py-1.5 font-body text-xs font-semibold sm:px-3 sm:py-[5px]"
+                className="max-w-full rounded-full px-3.5 py-1.5 font-body text-xs font-semibold [overflow-wrap:anywhere] sm:px-3 sm:py-[0.3125rem]"
                 style={{ backgroundColor: tag.bg, color: tag.fg }}
               >
                 {tag.label}
@@ -105,9 +96,6 @@ export function ItemDetailModal({ item, onClose, onEdit, onDelete }: ItemDetailM
 
       <DetailsList rows={item.details} />
       {item.notes.trim() !== "" && <NotesSection notes={item.notes} />}
-      <div className="hidden sm:block">
-        <DetailActions onEdit={() => onEdit?.(item)} onDelete={() => onDelete?.(item)} />
-      </div>
     </ModalShell>
   );
 }

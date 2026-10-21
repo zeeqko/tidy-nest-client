@@ -116,7 +116,7 @@ export function ManageCategoriesModal({
       level="base"
       onClose={close}
       closeGuard={closeGuard}
-      maxWidthClassName="sm:max-w-[780px]"
+      maxWidthClassName="sm:max-w-[48.75rem]"
       bodyRef={listRef}
       title="Edit Categories"
       subtitle="Organize your items by type, not just location"
@@ -136,19 +136,19 @@ export function ManageCategoriesModal({
                   isExpanded ? "bg-cute-surface-alt p-3.5" : ""
                 }`}
               >
-                <div className={`flex w-full items-center gap-3 ${isExpanded ? "" : "p-2.5"}`}>
+                <div className={`flex w-full flex-wrap items-center gap-x-3 gap-y-1 sm:flex-nowrap sm:gap-3 ${isExpanded ? "" : "p-2.5"}`}>
                   <CategoryBadge
                     iconSrc={ui.iconSrc}
                     iconName={ui.iconName}
                     colour={ui.colour}
                     size={46}
                   />
-                  <div className="flex flex-1 flex-col gap-px">
-                    <p className="font-heading text-[15px] font-medium text-cute-text">
+                  <div className="flex min-w-[8rem] flex-1 flex-col gap-px sm:min-w-0">
+                    <p className="truncate font-heading text-cute-15 font-medium text-cute-text">
                       {category.name}
                     </p>
                   </div>
-                  <div className="flex items-center gap-2">
+                  <div className="ml-auto flex shrink-0 items-center gap-2">
                     <button
                       type="button"
                       aria-label={`Edit ${category.name}`}
@@ -192,7 +192,7 @@ export function ManageCategoriesModal({
 
                 {isExpanded && (
                   <>
-                    <div className="flex flex-wrap items-center gap-2 pt-3 pl-[52px]">
+                    <div className="flex flex-wrap items-center gap-2 pt-3 pl-[3.25rem]">
                       {category.subCategories.map((sub) => (
                         <span
                           key={sub.id}
@@ -224,7 +224,7 @@ export function ManageCategoriesModal({
                       />
                     </div>
 
-                    <div className="flex flex-col gap-2 pt-2.5 pl-[52px]">
+                    <div className="flex flex-col gap-2 pt-2.5 pl-[3.25rem]">
                       <p className="font-body text-xs font-semibold text-cute-text-muted">Tags</p>
                       <div className="flex flex-wrap items-center gap-2">
                         {(category.tags ?? []).map((tag) => (
@@ -270,7 +270,7 @@ export function ManageCategoriesModal({
         <button
           type="button"
           onClick={() => openEditor(() => setAddingCategory(true))}
-          className="flex w-full shrink-0 items-center justify-center gap-2 rounded-cute-m border-[1.5px] border-cute-border p-3.5 font-body text-sm font-semibold text-cute-text transition hover:bg-cute-surface-alt"
+          className="flex w-full shrink-0 items-center justify-center gap-2 rounded-cute-m border-[1.5px] sm:mb-6 border-cute-border p-3.5 font-body text-sm font-semibold text-cute-text transition hover:bg-cute-surface-alt"
         >
           <Plus size={16} />
           Add Category

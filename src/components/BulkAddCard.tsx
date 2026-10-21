@@ -164,7 +164,7 @@ function Field({
     <label className="flex w-full flex-col gap-1">
       <span
         aria-hidden={srLabel ? true : undefined}
-        className="font-body text-[11px] font-semibold text-cute-text-muted"
+        className="font-body text-cute-11 font-semibold text-cute-text-muted"
       >
         {label}
       </span>
@@ -517,7 +517,7 @@ export const BulkAddCard = memo(function BulkAddCard({
                       <span
                         key={t}
                         style={{ backgroundColor: colours.bg, color: colours.fg }}
-                        className="flex items-center gap-1 rounded-full py-1 pr-2 pl-2.5 font-body text-[11px] font-semibold"
+                        className="flex items-center gap-1 rounded-full py-1 pr-2 pl-2.5 font-body text-cute-11 font-semibold"
                       >
                         {t}
                         <button
@@ -560,7 +560,7 @@ export const BulkAddCard = memo(function BulkAddCard({
 
               <Field label="Notes">
                 <textarea
-                  className={`${fieldClass} min-h-[60px] resize-y`}
+                  className={`${fieldClass} min-h-[3.75rem] resize-y`}
                   value={card.notes}
                   onChange={(e) => onNotesChange(card.id, e.target.value)}
                   placeholder="Anything worth remembering about this item"
@@ -574,7 +574,7 @@ export const BulkAddCard = memo(function BulkAddCard({
           {(card.note || isCommitError) && (
             <div className="flex flex-col gap-1.5 px-2 pb-2">
               {card.note && (
-                <p className="font-body text-[11px] text-cute-text-muted">{card.note}</p>
+                <p className="font-body text-cute-11 text-cute-text-muted">{card.note}</p>
               )}
               {isCommitError && (
                 <>

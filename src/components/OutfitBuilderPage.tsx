@@ -260,7 +260,7 @@ export function OutfitBuilderPage() {
   if (isEditing) {
     if (lookLoading) {
       return (
-        <div className="flex min-h-[60vh] w-full items-center justify-center">
+        <div className="flex min-h-[60dvh] w-full items-center justify-center">
           <p className="font-body text-sm text-cute-text-muted">Loading look…</p>
         </div>
       );
@@ -269,7 +269,7 @@ export function OutfitBuilderPage() {
     if (!look) {
       if (lookError && lookError !== "look not found") {
         return (
-          <div className="flex min-h-[60vh] w-full flex-col items-center justify-center gap-3 px-6 text-center">
+          <div className="flex min-h-[60dvh] w-full flex-col items-center justify-center gap-3 px-6 text-center">
             <p className="font-body text-sm text-cute-danger">
               Couldn't load this look from the server: {lookError}
             </p>
@@ -280,7 +280,7 @@ export function OutfitBuilderPage() {
         );
       }
       return (
-        <div className="flex min-h-[60vh] w-full flex-col items-center justify-center gap-3 px-6 text-center">
+        <div className="flex min-h-[60dvh] w-full flex-col items-center justify-center gap-3 px-6 text-center">
           <p className="font-heading text-xl font-semibold text-cute-text">Look not found</p>
           <p className="font-body text-sm text-cute-text-muted">
             This look may have been deleted, or the link isn't right.
@@ -295,7 +295,7 @@ export function OutfitBuilderPage() {
 
   return (
     <div className="w-full px-5 pt-2 pb-10 sm:px-10">
-      <div className="mx-auto flex w-full max-w-[1100px] flex-col gap-4 sm:gap-9">
+      <div className="mx-auto flex w-full max-w-cute-page 2xl:max-w-cute-page-wide flex-col gap-4 sm:gap-9">
         <MobileTopBar title={isEditing ? "Edit Look" : "Create a Look"} backTo={backTarget} />
 
         <div className="hidden sm:block">
@@ -321,8 +321,8 @@ export function OutfitBuilderPage() {
           </div>
         </div>
 
-        <div className="flex w-full flex-col gap-6 sm:flex-row sm:items-start sm:gap-8">
-          <div className="flex w-full flex-col gap-3 sm:w-[440px] sm:shrink-0">
+        <div className="flex w-full flex-col gap-6 lg:flex-row lg:items-start lg:gap-8">
+          <div className="flex w-full flex-col gap-3 sm:max-w-[36rem] lg:w-[clamp(26rem,45%,44rem)] lg:max-w-none lg:shrink-0">
             <div className="flex items-center justify-between gap-2">
               <h2 className="font-heading text-sm font-semibold text-cute-text sm:text-base">
                 Your Look
@@ -368,7 +368,7 @@ export function OutfitBuilderPage() {
                           </span>
                         )}
                       </span>
-                      <span className="max-w-[100px] truncate font-body text-xs text-cute-text">
+                      <span className="max-w-[6.25rem] truncate font-body text-xs text-cute-text">
                         {isPending ? "Removing…" : item.name}
                       </span>
                       <button

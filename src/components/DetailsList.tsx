@@ -11,7 +11,7 @@ interface DetailsListProps {
 export function DetailsList({ rows }: DetailsListProps) {
   return (
     <div className="flex w-full flex-col gap-1">
-      <h3 className="font-heading text-[15px] font-semibold text-cute-text">Details</h3>
+      <h3 className="font-heading text-cute-15 font-semibold text-cute-text">Details</h3>
       <div className="flex w-full flex-col rounded-cute-m border border-cute-border bg-cute-surface px-4 py-1 sm:rounded-none sm:border-0 sm:bg-transparent sm:p-0">
         {rows.map((row, index) => {
           const Icon = row.icon;
@@ -26,11 +26,11 @@ export function DetailsList({ rows }: DetailsListProps) {
                 <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-cute-surface-alt text-cute-secondary-foreground sm:h-auto sm:w-auto sm:bg-transparent sm:text-cute-text-muted">
                   <Icon size={16} />
                 </span>
-                <span className="font-body text-[13px] text-cute-text-muted sm:text-sm">
+                <span className="font-body text-cute-13 text-cute-text-muted sm:text-sm">
                   {row.label}
                 </span>
               </div>
-              <span className="min-w-0 flex-1 text-right font-body text-[13px] font-semibold break-words text-cute-text sm:text-sm">
+              <span className="min-w-0 flex-1 text-right font-body text-cute-13 font-semibold [overflow-wrap:anywhere] text-cute-text sm:text-sm">
                 {row.value}
               </span>
             </div>

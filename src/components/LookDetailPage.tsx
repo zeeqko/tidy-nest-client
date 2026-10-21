@@ -13,7 +13,7 @@ import { toPlacedItems } from "../lib/lookPlacements";
  *  image — same visual chip everywhere a look's occasion is shown. */
 function OccasionBadge({ occasion }: { occasion: string }) {
   return (
-    <span className="max-w-full truncate rounded-full bg-white/90 px-2.5 py-1 font-body text-[11px] font-semibold text-cute-text shadow-[0_1px_3.5px_-1px_rgba(0,0,0,0.06)]">
+    <span className="max-w-full truncate rounded-full bg-white/90 px-2.5 py-1 font-body text-cute-11 font-semibold text-cute-text shadow-[0_1px_3.5px_-1px_rgba(0,0,0,0.06)]">
       {occasion}
     </span>
   );
@@ -46,7 +46,7 @@ export function LookDetailPage() {
 
   if (loading) {
     return (
-      <div className="flex min-h-[60vh] w-full items-center justify-center">
+      <div className="flex min-h-[60dvh] w-full items-center justify-center">
         <p className="font-body text-sm text-cute-text-muted">Loading look…</p>
       </div>
     );
@@ -55,7 +55,7 @@ export function LookDetailPage() {
   if (!look) {
     if (error && error !== "look not found") {
       return (
-        <div className="flex min-h-[60vh] w-full flex-col items-center justify-center gap-3 px-6 text-center">
+        <div className="flex min-h-[60dvh] w-full flex-col items-center justify-center gap-3 px-6 text-center">
           <p className="font-body text-sm text-cute-danger">
             Couldn't load this look from the server: {error}
           </p>
@@ -66,7 +66,7 @@ export function LookDetailPage() {
       );
     }
     return (
-      <div className="flex min-h-[60vh] w-full flex-col items-center justify-center gap-3 px-6 text-center">
+      <div className="flex min-h-[60dvh] w-full flex-col items-center justify-center gap-3 px-6 text-center">
         <p className="font-heading text-xl font-semibold text-cute-text">Look not found</p>
         <p className="font-body text-sm text-cute-text-muted">
           This look may have been deleted, or the link isn't right.
@@ -83,7 +83,7 @@ export function LookDetailPage() {
 
   return (
     <div className="w-full px-5 pt-2 pb-28 sm:px-10 sm:pb-10">
-      <div className="mx-auto flex w-full max-w-[1100px] flex-col gap-4 sm:gap-9">
+      <div className="mx-auto flex w-full max-w-cute-page 2xl:max-w-cute-page-wide flex-col gap-4 sm:gap-9">
         <MobileTopBar title={look.name} backTo="/stylebook" />
 
         {/* Mobile-only occasion + piece count row — MobileTopBar only carries the title. */}
@@ -126,7 +126,7 @@ export function LookDetailPage() {
           </div>
         </div>
 
-        <div className="w-full sm:w-[440px]">
+        <div className="w-full sm:max-w-[36rem] lg:w-[clamp(26rem,45%,44rem)] lg:max-w-none">
           <OutfitCanvas readOnly items={placedItems} />
         </div>
 

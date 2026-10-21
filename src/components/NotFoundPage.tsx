@@ -6,7 +6,7 @@ import { Link } from "react-router-dom";
  */
 export function NotFoundPage() {
   return (
-    <div className="flex min-h-[60vh] w-full flex-col items-center justify-center gap-3 px-6 text-center">
+    <div className="flex min-h-[60dvh] w-full flex-col items-center justify-center gap-3 px-6 text-center">
       <p className="font-heading text-xl font-semibold text-cute-text">Page not found</p>
       <Link to="/" className="font-body text-sm font-semibold text-cute-primary hover:underline">
         Back to Home

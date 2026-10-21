@@ -46,6 +46,8 @@ export interface OrganizingItem {
   stats: StatEntry[];
   details: DetailRow[];
   notes: string;
+  /** Raw ISO timestamp from the API; used for sorting by date added. */
+  createdAt: string;
 }
 
 /** What a modal changed, so parents refresh only the affected data. */

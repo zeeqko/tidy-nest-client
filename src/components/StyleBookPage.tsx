@@ -54,7 +54,7 @@ export function StyleBookPage() {
 
   return (
     <div className="w-full px-5 pt-2 pb-10 sm:px-10">
-      <div className="mx-auto flex w-full max-w-[1100px] flex-col gap-4 sm:gap-9">
+      <div className="mx-auto flex w-full max-w-cute-page 2xl:max-w-cute-page-wide flex-col gap-4 sm:gap-9">
         <MobileTopBar
           title="Style Book"
           backTo="/"
@@ -72,7 +72,7 @@ export function StyleBookPage() {
         <div className="hidden sm:block">
           <div className="flex w-full items-center justify-between">
             <div className="flex flex-col gap-1">
-              <h1 className="font-heading text-[26px] font-semibold text-cute-text">
+              <h1 className="font-heading text-cute-fluid-26 font-semibold text-cute-text">
                 Style Book
               </h1>
               <p className="font-body text-sm text-cute-text-muted">
@@ -126,7 +126,7 @@ export function StyleBookPage() {
             action={{ label: "Clear filter", onClick: clearFilter }}
           />
         ) : (
-          <div className="grid w-full grid-cols-2 gap-3 sm:grid-cols-3 sm:gap-6 md:grid-cols-4 xl:grid-cols-5">
+          <div className="grid w-full grid-cols-2 gap-3 sm:cute-card-grid sm:gap-6">
             {filteredLooks.map((look) => (
               <LookCard
                 key={look.id}

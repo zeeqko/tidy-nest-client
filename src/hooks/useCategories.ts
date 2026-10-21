@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { listCategories, type ApiCategory } from "../api/categories";
 import { toUiCategory } from "../data/categories";
 import type { Category } from "../types";
@@ -34,9 +34,11 @@ export function useCategories(): UseCategoriesResult {
     refresh();
   }, [refresh]);
 
+  const categories = useMemo(() => apiCategories.map(toUiCategory), [apiCategories]);
+
   return {
     apiCategories,
-    categories: apiCategories.map(toUiCategory),
+    categories,
     loading,
     error,
     refresh,

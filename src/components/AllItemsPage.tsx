@@ -13,6 +13,9 @@ import { ConfirmDeleteModal } from "./ConfirmDeleteModal";
 import { deleteItem } from "../api/inventory";
 import { useItems } from "../hooks/useItems";
 import { useCategories } from "../hooks/useCategories";
+import { SortSelect } from "./SortSelect";
+import { FilterSelect } from "./FilterSelect";
+import { sortItems, type SortOrder } from "../lib/sortItems";
 import type { OrganizingItem } from "../types";
 
 export function AllItemsPage() {
@@ -21,14 +24,13 @@ export function AllItemsPage() {
   const [search, setSearch] = useState("");
   const [activeCategory, setActiveCategory] = useState("all");
   const [activeSubcategory, setActiveSubcategory] = useState("all");
+  const [sortOrder, setSortOrder] = useState<SortOrder>("newest");
   const [selectedItem, setSelectedItem] = useState<OrganizingItem | null>(null);
   const [chooserOpen, setChooserOpen] = useState(false);
   const [formOpen, setFormOpen] = useState(false);
   const [bulkOpen, setBulkOpen] = useState(false);
   const [editingItem, setEditingItem] = useState<OrganizingItem | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<OrganizingItem | null>(null);
-
-  const activeCategoryLabel = categories.find((c) => c.id === activeCategory)?.label;
 
   const handleSelectCategory = (id: string) => {
     setActiveCategory(id);
@@ -51,32 +53,38 @@ export function AllItemsPage() {
     await refresh();
   };
 
-  const subcategories = useMemo(() => {
-    if (activeCategory === "all") return [];
-    const unique = new Set(
-      items
-        .filter((item) => item.category.label === activeCategoryLabel)
-        .map((item) => item.subcategory),
-    );
-    return Array.from(unique);
-  }, [items, activeCategory, activeCategoryLabel]);
+  // The category's own definition (includes subcategories with no items).
+  const subcategories = useMemo(
+    () => categories.find((c) => c.id === activeCategory)?.subcategories ?? [],
+    [categories, activeCategory],
+  );
+
+  // A subcategory that left scope (edited/deleted) is treated as "all".
+  const effectiveSubcategory = subcategories.some((s) => s.id === activeSubcategory)
+    ? activeSubcategory
+    : "all";
 
   const filteredItems = useMemo(() => {
     const query = search.trim().toLowerCase();
 
     return items.filter((item) => {
       const matchesCategory =
-        activeCategory === "all" || item.category.label === activeCategoryLabel;
+        activeCategory === "all" || item.categoryId === activeCategory;
       const matchesSubcategory =
-        activeSubcategory === "all" || item.subcategory === activeSubcategory;
+        effectiveSubcategory === "all" || item.subCategoryId === effectiveSubcategory;
       const matchesSearch =
         query.length === 0 || item.name.toLowerCase().includes(query);
       return matchesCategory && matchesSubcategory && matchesSearch;
     });
-  }, [items, search, activeCategory, activeCategoryLabel, activeSubcategory]);
+  }, [items, search, activeCategory, effectiveSubcategory]);
+
+  const sortedItems = useMemo(
+    () => sortItems(filteredItems, sortOrder),
+    [filteredItems, sortOrder],
+  );
 
   const hasActiveFilters =
-    search.trim().length > 0 || activeCategory !== "all" || activeSubcategory !== "all";
+    search.trim().length > 0 || activeCategory !== "all" || effectiveSubcategory !== "all";
 
   const clearFilters = () => {
     setSearch("");
@@ -84,24 +92,68 @@ export function AllItemsPage() {
     setActiveSubcategory("all");
   };
 
+  const showSort = !error && !loading && sortedItems.length > 0;
+
   return (
     <div className="w-full px-5 pt-2 pb-10 sm:px-10">
-      <div className="mx-auto flex w-full max-w-[1100px] flex-col gap-4 sm:gap-9">
+      <div className="mx-auto flex w-full max-w-cute-page 2xl:max-w-cute-page-wide flex-col gap-4 sm:gap-9">
         <MobileTopBar title="All Items" backTo="/" />
         <div className="hidden sm:block">
           <Header totalCount={items.length} onAdd={openCreate} />
         </div>
         <SearchBar value={search} onChange={setSearch} />
-        <CategoryFilters
-          categories={categories}
-          active={activeCategory}
-          onSelect={handleSelectCategory}
-        />
-        <SubcategoryFilters
-          subcategories={subcategories}
-          active={activeSubcategory}
-          onSelect={setActiveSubcategory}
-        />
+        <div className="hidden sm:block">
+          <CategoryFilters
+            categories={categories}
+            active={activeCategory}
+            onSelect={handleSelectCategory}
+          />
+        </div>
+        {subcategories.length > 0 && (
+          <div className="hidden sm:block">
+            <SubcategoryFilters
+              subcategories={subcategories}
+              active={effectiveSubcategory}
+              onSelect={setActiveSubcategory}
+            />
+          </div>
+        )}
+        <div
+          className={`flex w-full flex-wrap gap-2 sm:max-w-[1100px] sm:justify-end sm:gap-0 ${
+            showSort ? "sm:-mb-6" : "sm:hidden"
+          }`}
+        >
+          <FilterSelect
+            className="flex-1 basis-[6.5rem] sm:hidden"
+            label="Filter by category"
+            value={activeCategory}
+            options={[
+              { value: "all", label: "All categories" },
+              ...categories.map((c) => ({ value: c.id, label: c.label })),
+            ]}
+            onChange={handleSelectCategory}
+          />
+          <FilterSelect
+            className="flex-1 basis-[6.5rem] sm:hidden"
+            label="Filter by subcategory"
+            value={effectiveSubcategory}
+            options={
+              subcategories.length > 0
+                ? [
+                    { value: "all", label: "All subcategories" },
+                    ...subcategories.map((s) => ({ value: s.id, label: s.name })),
+                  ]
+                : [{ value: "all", label: "No subcategories" }]
+            }
+            onChange={setActiveSubcategory}
+            disabled={subcategories.length === 0}
+          />
+          <SortSelect
+            className={`flex-1 basis-[6.5rem] sm:flex-none sm:basis-auto ${showSort ? "" : "sm:hidden"}`}
+            value={sortOrder}
+            onChange={setSortOrder}
+          />
+        </div>
         {error ? (
           <p className="w-full py-10 text-center font-body text-sm text-cute-danger">
             Couldn't load items from the server: {error}
@@ -112,11 +164,9 @@ export function AllItemsPage() {
           </p>
         ) : (
           <ItemsGrid
-            items={filteredItems}
+            items={sortedItems}
             onSelect={setSelectedItem}
             onClearFilters={hasActiveFilters ? clearFilters : undefined}
-            onEdit={openEdit}
-            onDelete={setDeleteTarget}
           />
         )}
       </div>

@@ -190,5 +190,6 @@ export function toOrganizingItem(
       { icon: RotateCcw, label: "Last Updated", value: formatDate(item.updatedAt) },
     ],
     notes: item.notes ?? "",
+    createdAt: item.createdAt,
   };
 }

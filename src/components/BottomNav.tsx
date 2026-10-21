@@ -31,7 +31,7 @@ function Tab({ label, icon: Icon, active, onClick, ariaExpanded, ariaHasPopup, d
       title={disabled ? "Coming soon" : undefined}
       aria-expanded={ariaExpanded}
       aria-haspopup={ariaHasPopup}
-      className={`flex flex-1 flex-col items-center gap-[3px] py-1 font-body text-[11px] transition ${
+      className={`flex min-w-0 flex-1 flex-col items-center gap-[3px] whitespace-nowrap py-1 font-body text-cute-11 transition ${
         disabled
           ? "cursor-not-allowed text-cute-text-muted opacity-40"
           : active

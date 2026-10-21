@@ -759,7 +759,7 @@ export function BulkAddItemsModal({
         level="elevated"
         onClose={requestClose}
         closeGuard={closeGuard}
-        maxWidthClassName="sm:max-w-[640px]"
+        maxWidthClassName="sm:max-w-[40rem]"
         title="Add Multiple Photos"
         footer={
           cards.length > 0 ? (

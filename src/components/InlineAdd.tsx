@@ -110,7 +110,7 @@ export function InlineAdd({ placeholder, label, onAdd }: InlineAddProps) {
         <p
           role="status"
           aria-live="polite"
-          className="max-w-[180px] font-body text-[11px] text-cute-danger"
+          className="max-w-[11.25rem] font-body text-cute-11 text-cute-danger"
         >
           {message}
         </p>

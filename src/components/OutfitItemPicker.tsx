@@ -20,7 +20,7 @@ function PickerTile({ item, onAdd }: { item: OrganizingItem; onAdd: (item: Organ
     <button
       type="button"
       onClick={() => onAdd(item)}
-      className="flex w-[104px] shrink-0 flex-col gap-1.5 rounded-cute-l border border-cute-border bg-cute-surface p-2 text-left transition hover:shadow-[0_6px_14px_rgba(74,63,85,0.12)] sm:w-[124px]"
+      className="flex w-[6.5rem] shrink-0 flex-col gap-1.5 rounded-cute-l border border-cute-border bg-cute-surface p-2 text-left transition hover:shadow-[0_6px_14px_rgba(74,63,85,0.12)] sm:w-full"
     >
       <div className="relative h-20 w-full shrink-0 overflow-hidden rounded-cute-m">
         {src ? (
@@ -99,7 +99,7 @@ export function OutfitItemPicker({ onAdd }: OutfitItemPickerProps) {
           body="Add items to your closet, or try a different category."
         />
       ) : (
-        <div className="flex w-full gap-3 overflow-x-auto pb-1 sm:flex-wrap sm:overflow-visible">
+        <div className="flex w-full gap-3 overflow-x-auto pb-1 sm:grid sm:grid-cols-[repeat(auto-fill,minmax(7.5rem,1fr))] sm:overflow-visible">
           {filteredItems.map((item) => (
             <PickerTile key={item.id} item={item} onAdd={onAdd} />
           ))}

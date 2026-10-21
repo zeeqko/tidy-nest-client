@@ -9,7 +9,8 @@ interface CategoryTileProps {
   colour?: string;
   label: string;
   itemCount: number;
-  subcategories: string[];
+  /** Optional summary line under the item count; omitted on Home. */
+  subcategories?: string[];
 }
 
 /** "Milk, Beef" for two, "Milk, Beef +3" once there are more than two —
@@ -30,13 +31,13 @@ export function CategoryTile({
   colour,
   label,
   itemCount,
-  subcategories,
+  subcategories = [],
 }: CategoryTileProps) {
   const subcategorySummary = summarizeSubcategories(subcategories);
   return (
     <Link
       to={to}
-      className="flex items-center gap-3.5 rounded-cute-l border border-cute-border bg-cute-surface p-3.5 shadow-[0_3px_10px_-2px_rgba(74,63,85,0.06)] transition sm:flex-col sm:gap-3 sm:bg-cute-surface-alt sm:p-5 sm:text-center sm:shadow-none sm:hover:brightness-95"
+      className="flex min-w-0 items-center gap-3.5 rounded-cute-l border border-cute-border bg-cute-surface p-3.5 shadow-[0_3px_10px_-2px_rgba(74,63,85,0.06)] transition sm:flex-col sm:gap-3 sm:bg-cute-surface-alt sm:p-5 sm:text-center sm:shadow-none sm:hover:brightness-95"
     >
       <span className="sm:hidden">
         <CategoryBadge iconSrc={iconSrc} iconName={iconName} colour={colour} size={64} />
@@ -44,15 +45,15 @@ export function CategoryTile({
       <span className="hidden sm:block">
         <CategoryBadge iconSrc={iconSrc} iconName={iconName} colour={colour} size={64} />
       </span>
-      <div className="flex min-w-0 flex-1 flex-col gap-0.5 sm:flex-none sm:gap-1">
-        <p className="truncate font-heading text-base font-medium text-cute-text sm:text-[17px] sm:font-semibold">
+      <div className="flex min-w-0 flex-1 flex-col gap-0.5 sm:max-w-full sm:flex-none sm:gap-1">
+        <p className="min-w-0 truncate break-words font-heading text-base font-medium text-cute-text sm:text-cute-17 sm:font-semibold">
           {label}
         </p>
-        <p className="font-body text-[13px] text-cute-text-muted">
+        <p className="font-body text-cute-13 text-cute-text-muted">
           {itemCount} {itemCount === 1 ? "item" : "items"}
         </p>
         {subcategorySummary && (
-          <p className="truncate font-body text-[11px] text-cute-text-muted">
+          <p className="truncate font-body text-cute-11 text-cute-text-muted">
             {subcategorySummary}
           </p>
         )}

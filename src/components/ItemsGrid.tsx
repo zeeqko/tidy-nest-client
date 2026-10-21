@@ -1,6 +1,7 @@
 import { SearchX } from "lucide-react";
 import { EmptyState } from "./EmptyState";
 import { ItemCard } from "./ItemCard";
+import { ITEM_GRID_BASE } from "./itemGridClass";
 import type { OrganizingItem } from "../types";
 
 interface ItemsGridProps {
@@ -8,15 +9,11 @@ interface ItemsGridProps {
   onSelect?: (item: OrganizingItem) => void;
   /** When provided, the no-matches state offers a "Clear filters" action. */
   onClearFilters?: () => void;
-  /** Inline edit/delete on the card itself, matching CategoryPage's grid. */
-  onEdit?: (item: OrganizingItem) => void;
-  onDelete?: (item: OrganizingItem) => void;
 }
 
-/** Same card everywhere an item list renders: the large photo card, 2-up on
- *  mobile for a shopping-app style browsing grid, scaling up to 5 columns
- *  at xl. */
-export function ItemsGrid({ items, onSelect, onClearFilters, onEdit, onDelete }: ItemsGridProps) {
+/** Same card everywhere an item list renders: the 4:5 photo card in a dense
+ *  gallery grid: 3 columns below sm, 4 from sm, 5 from xl, capped at 1100px. */
+export function ItemsGrid({ items, onSelect, onClearFilters }: ItemsGridProps) {
   if (items.length === 0) {
     return (
       <EmptyState
@@ -29,15 +26,13 @@ export function ItemsGrid({ items, onSelect, onClearFilters, onEdit, onDelete }:
   }
 
   return (
-    <div className="grid w-full grid-cols-2 gap-3 sm:grid-cols-3 sm:gap-6 md:grid-cols-4 xl:grid-cols-5">
+    <div className={`${ITEM_GRID_BASE} max-w-[1100px]`}>
       {items.map((item) => (
         <ItemCard
           key={item.id}
           item={item}
           density="full"
           onSelect={onSelect}
-          onEdit={onEdit}
-          onDelete={onDelete}
         />
       ))}
     </div>

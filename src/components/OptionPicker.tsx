@@ -109,7 +109,13 @@ export function OptionPicker({
         r.width,
         Math.min(PANEL_MIN_WIDTH, window.innerWidth - VIEWPORT_MARGIN * 2),
       );
-      const left = Math.min(r.left, window.innerWidth - width - VIEWPORT_MARGIN);
+      // Right bound: the viewport, or the enclosing dialog card if narrower.
+      const card = triggerRef.current?.closest('[aria-modal="true"]')?.getBoundingClientRect();
+      const rightBound = Math.min(
+        window.innerWidth - VIEWPORT_MARGIN,
+        card ? card.right - VIEWPORT_MARGIN : Infinity,
+      );
+      const left = Math.max(VIEWPORT_MARGIN, Math.min(r.left, rightBound - width));
       if (spaceBelow < 200 && spaceAbove > spaceBelow) {
         setRect({
           left,
@@ -212,9 +218,9 @@ export function OptionPicker({
                         : trimmed,
                     );
                 }}
-                placeholder={`Search or add a ${noun}…`}
+                placeholder="Search or add…"
                 autoFocus
-                className="mb-1 w-full shrink-0 rounded-full border border-cute-border bg-cute-surface-alt px-3.5 py-2 font-body text-base text-cute-text outline-none transition placeholder:text-cute-text-muted focus:border-cute-primary"
+                className="mb-1 w-full min-w-0 shrink-0 text-ellipsis rounded-full border border-cute-border bg-cute-surface-alt px-3.5 py-2 font-body text-base text-cute-text outline-none transition placeholder:text-cute-text-muted focus:border-cute-primary"
               />
               <div className="flex max-h-44 flex-col overflow-y-auto">
                 {shown.map((option) => {
@@ -234,7 +240,7 @@ export function OptionPicker({
                   );
                 })}
                 {shown.length === 0 && !trimmed && (
-                  <p className="px-3 py-2 font-body text-[13px] text-cute-text-muted">
+                  <p className="px-3 py-2 font-body text-cute-13 text-cute-text-muted">
                     No {/[^aeiou]y$/.test(noun) ? `${noun.slice(0, -1)}ies` : `${noun}s`} yet — type a name to add one.
                   </p>
                 )}

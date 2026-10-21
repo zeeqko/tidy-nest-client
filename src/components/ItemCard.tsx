@@ -1,58 +1,18 @@
-import { MapPin, Pencil, Trash2 } from "lucide-react";
+import { useState, type KeyboardEvent } from "react";
+import { MapPin } from "lucide-react";
 import type { OrganizingItem } from "../types";
 
 interface ItemCardProps {
   item: OrganizingItem;
-  /** "full" is the large photo card (Category Modal design); "compact" is the
-   *  horizontal row card mirroring the mobile Home category list. Both always
-   *  carry name + location + quantity so the same item reads identically
-   *  everywhere it appears. */
+  /** "full" is the photo-only 4:5 card with the name over a bottom scrim (plus a
+   *  category chip at every size); location and quantity are only
+   *  shown in the detail modal. "compact" is the horizontal row card mirroring
+   *  the mobile Home category list and does show name, location and quantity. */
   density?: "compact" | "full";
-  chipMode?: "category" | "subcategory";
+  /** Full card only: omit the category chip (e.g. on the category page, where
+   *  every card is already in that category). */
+  hideChip?: boolean;
   onSelect?: (item: OrganizingItem) => void;
-  onEdit?: (item: OrganizingItem) => void;
-  onDelete?: (item: OrganizingItem) => void;
-}
-
-function EditDeleteButtons({
-  item,
-  onEdit,
-  onDelete,
-}: {
-  item: OrganizingItem;
-  onEdit?: (item: OrganizingItem) => void;
-  onDelete?: (item: OrganizingItem) => void;
-}) {
-  return (
-    <div className="flex shrink-0 items-center gap-2">
-      <button
-        type="button"
-        onClick={(event) => {
-          event.stopPropagation();
-          onEdit?.(item);
-        }}
-        aria-label={`Edit ${item.name}`}
-        className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full text-cute-text-muted transition hover:brightness-95"
-      >
-        <span className="flex h-[30px] w-[30px] items-center justify-center rounded-full bg-cute-surface-alt">
-          <Pencil size={13} />
-        </span>
-      </button>
-      <button
-        type="button"
-        onClick={(event) => {
-          event.stopPropagation();
-          onDelete?.(item);
-        }}
-        aria-label={`Delete ${item.name}`}
-        className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full text-cute-destructive transition hover:brightness-95"
-      >
-        <span className="flex h-[30px] w-[30px] items-center justify-center rounded-full bg-cute-destructive/15">
-          <Trash2 size={13} />
-        </span>
-      </button>
-    </div>
-  );
 }
 
 /** Location + quantity line, shared by both densities so every card carries
@@ -71,10 +31,9 @@ function LocationLine({ item, size = 12 }: { item: OrganizingItem; size?: number
   );
 }
 
-function CompactCard({ item, chipMode = "category", onSelect, onEdit, onDelete }: ItemCardProps) {
+function CompactCard({ item, onSelect }: ItemCardProps) {
   const Icon = item.icon;
-  const hasActions = Boolean(onEdit || onDelete);
-  const chipLabel = chipMode === "category" ? item.category.label : item.subcategory;
+  const chipLabel = item.category.label;
 
   return (
     <div
@@ -100,7 +59,7 @@ function CompactCard({ item, chipMode = "category", onSelect, onEdit, onDelete }
           </h3>
           {item.status && (
             <span
-              className="shrink-0 rounded-full px-2 py-[2px] font-body text-[10px] font-semibold"
+              className="shrink-0 rounded-full px-2 py-[2px] font-body text-cute-10 font-semibold"
               style={{ backgroundColor: item.status.bg, color: item.status.fg }}
             >
               {item.status.label}
@@ -109,82 +68,71 @@ function CompactCard({ item, chipMode = "category", onSelect, onEdit, onDelete }
         </div>
         <LocationLine item={item} size={11} />
         {chipLabel && (
-          <p className="truncate font-body text-[11px] text-cute-text-muted">{chipLabel}</p>
+          <p className="truncate font-body text-cute-11 text-cute-text-muted">{chipLabel}</p>
         )}
       </div>
-      {hasActions && <EditDeleteButtons item={item} onEdit={onEdit} onDelete={onDelete} />}
     </div>
   );
 }
 
-function FullCard({ item, chipMode = "category", onSelect, onEdit, onDelete }: ItemCardProps) {
+function FullCard({ item, hideChip = false, onSelect }: ItemCardProps) {
   const Icon = item.icon;
-  const tag = item.tags[0];
-  const hasActions = Boolean(onEdit || onDelete);
+  const [failedURL, setFailedURL] = useState<string | null>(null);
+  const showImage = !!item.imageURL && failedURL !== item.imageURL;
+  const handleCardClick = () => onSelect?.(item);
+  const handleKeyDown = (event: KeyboardEvent<HTMLDivElement>) => {
+    if (event.target !== event.currentTarget) return;
+    if (event.key === "Enter" || event.key === " ") {
+      event.preventDefault(); // Space must not scroll the page
+      handleCardClick();
+    }
+  };
 
   return (
     <div
-      onClick={() => onSelect?.(item)}
-      className="flex w-full cursor-pointer flex-col overflow-hidden rounded-cute-l border border-cute-border bg-cute-surface shadow-[0_6px_16px_rgba(74,63,85,0.08)] transition hover:shadow-[0_10px_24px_rgba(74,63,85,0.14)]"
+      data-testid="item-card"
+      data-item-id={item.id}
+      role="button"
+      tabIndex={0}
+      aria-label={item.name}
+      onClick={handleCardClick}
+      onKeyDown={handleKeyDown}
+      className="relative aspect-[4/5] w-full cursor-pointer select-none overflow-hidden rounded-cute-l border border-cute-border bg-cute-surface-alt shadow-[0_6px_16px_rgba(74,63,85,0.08)] transition [-webkit-touch-callout:none] hover:shadow-[0_10px_24px_rgba(74,63,85,0.14)] outline-none focus-visible:outline-2 focus-visible:outline-transparent focus-visible:[box-shadow:0_0_0_2px_#fff,0_0_0_5px_#4a3f55]"
     >
-      <div className="relative h-[170px] w-full shrink-0">
-        {item.imageURL ? (
-          <img src={item.imageURL} alt="" className="h-full w-full object-cover" />
-        ) : (
-          <div
-            className="flex h-full w-full items-center justify-center"
-            style={{ backgroundColor: item.iconBg }}
-          >
-            <Icon size={40} color={item.iconColor} />
-          </div>
-        )}
-        {chipMode === "category" ? (
-          <span
-            className="absolute top-2.5 right-2.5 max-w-[65%] truncate rounded-full px-2.5 py-1 font-body text-[11px] font-semibold"
-            style={{ backgroundColor: item.category.bg, color: item.category.fg }}
-          >
-            {item.category.label}
-          </span>
-        ) : (
-          item.subcategory && (
-            <span className="absolute top-2.5 right-2.5 max-w-[65%] truncate rounded-full bg-white/90 px-2.5 py-1 font-body text-[11px] font-semibold text-cute-text">
-              {item.subcategory}
-            </span>
-          )
-        )}
-        {tag && (
-          <span
-            className="absolute bottom-2.5 left-2.5 max-w-[65%] truncate rounded-full px-2.5 py-1 font-body text-[11px] font-semibold"
-            style={{ backgroundColor: tag.bg, color: tag.fg }}
-          >
-            {tag.label}
-          </span>
-        )}
-      </div>
-
-      <div className="flex w-full flex-col gap-2.5 p-3 sm:p-4">
-        <div className="flex w-full flex-col gap-0.5">
-          <h3 className="line-clamp-2 font-heading text-base font-medium text-cute-text">
-            {item.name}
-          </h3>
-          <p className="truncate font-body text-xs text-cute-text-muted">{item.subtitle}</p>
+      {showImage ? (
+        <img
+          src={item.imageURL}
+          alt=""
+          draggable={false}
+          loading="lazy"
+          decoding="async"
+          onError={() => setFailedURL(item.imageURL ?? null)}
+          className="absolute inset-0 h-full w-full object-cover"
+        />
+      ) : (
+        <div
+          className="absolute inset-0 flex items-center justify-center"
+          style={{ backgroundColor: item.iconBg }}
+        >
+          <Icon size={40} color={item.iconColor} className="size-7 -translate-y-2 sm:size-10 sm:translate-y-0" />
         </div>
+      )}
 
-        <LocationLine item={item} />
+      {!hideChip && (
+        <span
+          data-testid="item-chip"
+          className="absolute top-1.5 right-1.5 max-w-[calc(100%-0.75rem)] truncate rounded-full px-1.5 py-0.5 font-body text-[10px] leading-3 font-semibold sm:top-2.5 sm:right-2.5 sm:max-w-[calc(100%-1.25rem)] sm:px-2.5 sm:py-1 sm:text-cute-11 sm:leading-normal"
+          style={{ backgroundColor: item.category.bg, color: item.category.fg }}
+        >
+          {item.category.label}
+        </span>
+      )}
 
-        <div className="mt-auto flex w-full flex-wrap items-center justify-between gap-1.5">
-          {item.status ? (
-            <span
-              className="min-w-0 max-w-full truncate rounded-full px-3 py-[5px] font-body text-[11px] font-semibold"
-              style={{ backgroundColor: item.status.bg, color: item.status.fg }}
-            >
-              {item.status.label}
-            </span>
-          ) : (
-            <span />
-          )}
-          {hasActions && <EditDeleteButtons item={item} onEdit={onEdit} onDelete={onDelete} />}
-        </div>
+      {/* Bottom scrim keeps the name readable on light photos and placeholders. */}
+      <div data-testid="item-scrim" className="pointer-events-none absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/75 via-black/45 to-transparent px-2 pt-6 pb-2 sm:px-3 sm:pt-8 sm:pb-3 md:px-4 md:pb-4">
+        <h3 className="line-clamp-2 font-heading text-xs leading-4 font-medium text-white [text-shadow:0_1px_2px_rgba(0,0,0,0.4)] sm:text-sm sm:leading-5 md:text-base">
+          {item.name}
+        </h3>
       </div>
     </div>
   );

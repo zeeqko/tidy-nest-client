@@ -15,7 +15,7 @@ export function StatCard({ stat, accent }: StatCardProps) {
   const Icon = stat.icon;
 
   return (
-    <div className="flex w-full flex-col gap-1.5 rounded-cute-m border border-cute-border bg-cute-surface px-3 py-3.5 sm:gap-2 sm:border-0 sm:bg-cute-surface-alt sm:p-4">
+    <div className="flex w-full min-w-0 flex-col gap-1.5 rounded-cute-m border border-cute-border bg-cute-surface px-3 py-3.5 sm:gap-2 sm:border-0 sm:bg-cute-surface-alt sm:p-4">
       <span
         className="flex h-[26px] w-[26px] items-center justify-center rounded-full sm:hidden"
         style={{ backgroundColor: accent.bg }}
@@ -26,10 +26,10 @@ export function StatCard({ stat, accent }: StatCardProps) {
         <Icon size={14} className="text-cute-text-muted" />
         <span className="font-body text-xs text-cute-text-muted">{stat.label}</span>
       </div>
-      <p className="line-clamp-2 font-heading text-[15px] font-semibold break-words text-cute-text sm:text-[19px]">
+      <p className="line-clamp-2 font-heading text-cute-15 font-semibold [overflow-wrap:anywhere] text-cute-text sm:text-cute-19">
         {stat.value}
       </p>
-      <p className="mt-auto font-body text-[11px] text-cute-text-muted">
+      <p className="mt-auto font-body text-cute-11 text-cute-text-muted">
         <span className="sm:hidden">{stat.label}</span>
         <span className="hidden sm:inline">{stat.helper}</span>
       </p>

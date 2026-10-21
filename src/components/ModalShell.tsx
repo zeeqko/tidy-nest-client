@@ -10,6 +10,15 @@ const FOCUSABLE_SELECTOR =
  *  only restore it once the last one closes. */
 let openModalCount = 0;
 let savedBodyOverflow = "";
+/** Open ModalShell instances, oldest first; only the last one (topmost)
+ *  reacts to Escape so a confirm over a detail modal doesn't close both. */
+const openModalStack: symbol[] = [];
+/** Escape events already claimed by the topmost modal. Makes handling
+ *  independent of document-listener order: if the upper modal's listener runs
+ *  first and unmounts itself, the lower one still sees the event as handled. */
+const handledEscapes = new WeakSet<KeyboardEvent>();
+
+const isVisible = (el: HTMLElement) => el.offsetParent !== null || el.getClientRects().length > 0;
 
 /**
  * Single source of truth for every modal/portal layer's stacking order.
@@ -60,7 +69,7 @@ const DEFAULT_FOOTER_CLASS =
   "w-full shrink-0 border-t border-cute-border bg-cute-surface px-5 pt-3.5 pb-[calc(1rem+env(safe-area-inset-bottom))] sm:border-0 sm:bg-transparent sm:px-8 sm:pt-0 sm:pb-8";
 
 const DEFAULT_TITLE_CLASS =
-  "truncate font-heading text-xl font-semibold text-cute-text sm:text-[22px]";
+  "truncate font-heading text-xl font-semibold text-cute-text sm:text-cute-22";
 
 interface ModalShellPageProps {
   /** "page" (default): full-screen on mobile, centered card on `sm`+, with a
@@ -93,7 +102,10 @@ interface ModalShellPageProps {
   footerClassName?: string;
   bodyClassName?: string;
   bodyRef?: Ref<HTMLDivElement>;
-  /** e.g. `"sm:max-w-[520px]"` — desktop card width (page variant only). */
+  /** When set, the scroll body becomes a focusable labelled region so
+   *  keyboard users can scroll it (needed when a footer has other tab stops). */
+  bodyLabel?: string;
+  /** e.g. `"sm:max-w-[32.5rem]"` — desktop card width (page variant only). */
   maxWidthClassName?: string;
   /** Render the card as a `<form>` instead of a `<div>` (e.g. `ItemFormModal`). */
   as?: "div" | "form";
@@ -130,6 +142,7 @@ export function ModalShell({
   footerClassName,
   bodyClassName,
   bodyRef,
+  bodyLabel,
   maxWidthClassName,
   as = "div",
   onSubmit,
@@ -143,9 +156,25 @@ export function ModalShell({
     cardRef.current = node;
   };
 
+  // Assumes a child modal mounts in a later commit than its parent (true for
+  // every modal today). A parent and child mounting in the same commit would
+  // register child-first (effects run children-first) and invert the stack.
+  const stackIdRef = useRef<symbol>(Symbol("modal"));
+  useEffect(() => {
+    const id = stackIdRef.current;
+    openModalStack.push(id);
+    return () => {
+      const index = openModalStack.lastIndexOf(id);
+      if (index !== -1) openModalStack.splice(index, 1);
+    };
+  }, []);
+
   useEffect(() => {
     const handleKeyDown = (event: KeyboardEvent) => {
       if (event.key !== "Escape") return;
+      if (handledEscapes.has(event)) return;
+      if (openModalStack[openModalStack.length - 1] !== stackIdRef.current) return;
+      handledEscapes.add(event);
       if (closeGuard && !closeGuard()) return;
       onClose();
     };
@@ -175,7 +204,7 @@ export function ModalShell({
     const card = cardRef.current;
     if (!card) return;
     const previouslyFocused = document.activeElement as HTMLElement | null;
-    const getFocusable = () => Array.from(card.querySelectorAll<HTMLElement>(FOCUSABLE_SELECTOR));
+    const getFocusable = () => Array.from(card.querySelectorAll<HTMLElement>(FOCUSABLE_SELECTOR)).filter(isVisible);
     (getFocusable()[0] ?? card).focus();
     const handleKeyDown = (event: KeyboardEvent) => {
       if (event.key !== "Tab") return;
@@ -183,10 +212,14 @@ export function ModalShell({
       if (items.length === 0) return;
       const first = items[0];
       const last = items[items.length - 1];
-      if (event.shiftKey && document.activeElement === first) {
+      const active = document.activeElement as HTMLElement | null;
+      // Focus on the card itself (or anything not in `items`) would otherwise
+      // let Tab/Shift+Tab leave the modal.
+      const outside = !active || !items.includes(active);
+      if (event.shiftKey && (outside || active === first)) {
         event.preventDefault();
         last.focus();
-      } else if (!event.shiftKey && document.activeElement === last) {
+      } else if (!event.shiftKey && (outside || active === last)) {
         event.preventDefault();
         first.focus();
       }
@@ -220,7 +253,7 @@ export function ModalShell({
           role="alertdialog"
           aria-modal="true"
           tabIndex={-1}
-          className={`flex w-full max-w-[420px] flex-col items-center gap-4 rounded-cute-l bg-cute-surface p-8 text-center outline-none ${CARD_SHADOW}`}
+          className={`flex w-full max-w-[26.25rem] flex-col items-center gap-4 rounded-cute-l bg-cute-surface p-8 text-center outline-none ${CARD_SHADOW}`}
         >
           {children}
         </div>
@@ -228,7 +261,7 @@ export function ModalShell({
     );
   }
 
-  const cardClassName = `flex h-full w-full flex-col bg-cute-bg sm:h-auto sm:max-h-[90vh] ${
+  const cardClassName = `flex h-full w-full flex-col bg-cute-bg sm:h-auto sm:max-h-[90dvh] ${
     maxWidthClassName ?? ""
   } sm:rounded-cute-l sm:bg-cute-surface ${CARD_SHADOW}`;
 
@@ -254,7 +287,7 @@ export function ModalShell({
             </h2>
           )}
           {subtitle && (
-            <p className="hidden font-body text-[13px] text-cute-text-muted sm:block">
+            <p className="hidden font-body text-cute-13 text-cute-text-muted sm:block">
               {subtitle}
             </p>
           )}
@@ -272,7 +305,10 @@ export function ModalShell({
 
       <div
         ref={bodyRef}
+        {...(bodyLabel ? { tabIndex: 0, role: "region", "aria-label": bodyLabel } : {})}
         className={`flex min-h-0 w-full flex-1 flex-col overflow-y-auto ${
+          bodyLabel ? "focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-cute-primary" : ""
+        } ${
           bodyClassName ?? DEFAULT_BODY_CLASS
         } ${belowBottomNav ? "pb-24 sm:pb-0" : ""}`}
       >

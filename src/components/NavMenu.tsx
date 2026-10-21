@@ -68,7 +68,7 @@ export function NavMenu({ open, onClose, onManageCategories }: NavMenuProps) {
       <div
         role="menu"
         aria-label="Main menu"
-        className={`fixed inset-x-0 bottom-0 ${MODAL_Z_CLASS.raised} flex flex-col gap-0.5 rounded-t-cute-l border-t border-cute-border bg-cute-surface p-2.5 pb-[calc(0.75rem+env(safe-area-inset-bottom))] shadow-[0_-8px_28px_-6px_rgba(74,63,85,0.19)] sm:inset-x-auto sm:top-[84px] sm:left-12 sm:bottom-auto sm:w-[240px] sm:rounded-cute-m sm:border sm:pb-2.5 sm:shadow-[0_12px_28px_-6px_rgba(74,63,85,0.19)]`}
+        className={`fixed inset-x-0 bottom-0 ${MODAL_Z_CLASS.raised} flex flex-col gap-0.5 rounded-t-cute-l border-t border-cute-border bg-cute-surface p-2.5 pb-[calc(0.75rem+env(safe-area-inset-bottom))] shadow-[0_-8px_28px_-6px_rgba(74,63,85,0.19)] sm:inset-x-auto sm:top-[5.25rem] sm:left-12 sm:bottom-auto sm:w-[min(15rem,calc(100dvw-2rem))] sm:rounded-cute-m sm:border sm:pb-2.5 sm:shadow-[0_12px_28px_-6px_rgba(74,63,85,0.19)]`}
       >
         {menuItems.map((item, index) => {
           const Icon = item.icon;

@@ -15,9 +15,8 @@ interface PlacedLayout extends ApiLookItem {
   heightPct: number;
 }
 
-/** Icon-pill edit/delete row, treatment lifted verbatim from `ItemCard`'s
- *  `EditDeleteButtons` (same sizes, colour tokens, and `aria-label` shape)
- *  so the two card families read identically. Each button stops both click
+/** Icon-pill edit/delete row (30px pills in 44px tap targets, `aria-label`
+ *  shape "Edit <name>" / "Delete <name>"). Each button stops both click
  *  and keydown propagation so a press (mouse or keyboard) never also
  *  triggers the ancestor card's own `onSelect` navigation — the card is a
  *  `role="button"` with its own Enter/Space handler, so an un-stopped
@@ -100,9 +99,8 @@ function layoutItems(items: ApiLookItem[]): PlacedLayout[] {
  *  photo, positioned/scaled/rotated per its saved transform) plus name +
  *  piece count. Selecting the card (anywhere outside the action buttons)
  *  navigates to the look's detail page; the pencil/trash icons navigate to
- *  edit or open a delete confirmation, mirroring `ItemCard`/`CategoryPage`'s
- *  wiring shape via optional `onSelect`/`onEdit`/`onDelete` callbacks owned
- *  by the parent page. */
+ *  edit or open a delete confirmation. The page owns the optional
+ *  `onSelect`/`onEdit`/`onDelete` callbacks. */
 export function LookCard({ look, onSelect, onEdit, onDelete }: LookCardProps) {
   const layout = look.items.length > 0 ? layoutItems(look.items) : [];
   const hasActions = Boolean(onEdit || onDelete);
@@ -131,13 +129,12 @@ export function LookCard({ look, onSelect, onEdit, onDelete }: LookCardProps) {
       // higher-level UI like modal overlays. See T5.
       className="isolate flex w-full cursor-pointer flex-col overflow-hidden rounded-cute-l border border-cute-border bg-cute-surface shadow-[0_6px_16px_rgba(74,63,85,0.08)] transition hover:shadow-[0_10px_24px_rgba(74,63,85,0.14)]"
     >
-      <div className="relative flex h-[170px] w-full shrink-0 items-center justify-center overflow-hidden bg-cute-surface-alt">
-        {/* Fixed-height band matching ItemCard's h-[170px] image block; the
-         *  composite itself stays a square (never stretched — see
+      <div className="relative flex aspect-square w-full shrink-0 items-center justify-center overflow-hidden bg-cute-surface-alt">
+        {/* Square band; the composite itself stays a square (never stretched — see
          *  layoutItems' docstring) sized to the lesser of the band's height
          *  and the card's width, and is centered on both axes within the
          *  band. */}
-        <div className="relative aspect-square w-full max-w-[170px]">
+        <div className="relative aspect-square w-full">
           {layout.length > 0 ? (
             layout.map((item, index) => {
               const src = item.cutoutURL || item.imageURL;
@@ -179,7 +176,7 @@ export function LookCard({ look, onSelect, onEdit, onDelete }: LookCardProps) {
           // explicit positive z-index, so this badge needs one too — an
           // unset/auto z-index here would still paint underneath them).
           <span
-            className="absolute top-2.5 right-2.5 z-[1000] max-w-[65%] truncate rounded-full bg-white/90 px-2.5 py-1 font-body text-[11px] font-semibold text-cute-text"
+            className="absolute top-2.5 right-2.5 z-[1000] max-w-[65%] truncate rounded-full bg-white/90 px-2.5 py-1 font-body text-cute-11 font-semibold text-cute-text"
           >
             {look.occasion}
           </span>

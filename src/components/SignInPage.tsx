@@ -30,7 +30,7 @@ export function SignInPage() {
 
   return (
     <AuthShell subtitle="Keep every drawer, shelf, and fridge shelf happily in its place.">
-      <form className="flex w-full max-w-[400px] flex-col gap-5" onSubmit={handleSubmit}>
+      <form className="flex w-full max-w-[25rem] flex-col gap-5" onSubmit={handleSubmit}>
         <label className="flex w-full flex-col gap-1.5">
           <span className="font-body text-sm font-medium text-cute-text">Email</span>
           <input

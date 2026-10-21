@@ -76,7 +76,7 @@ export function AppLayout() {
   useEffect(() => setManageOpen(false), [pathname]);
 
   return (
-    <div className="min-h-screen w-full bg-cute-bg pt-[env(safe-area-inset-top)] pb-24 sm:pb-0">
+    <div className="min-h-dvh w-full bg-cute-bg pt-[env(safe-area-inset-top)] pb-24 sm:pb-0">
       <HomeTopBar
         className={isHome ? "flex" : "hidden sm:flex"}
         onMenuClick={() => setMenuOpen((open) => !open)}

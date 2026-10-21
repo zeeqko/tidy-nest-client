@@ -28,11 +28,11 @@ export function AllCategoriesPage() {
 
   return (
     <div className="w-full px-5 pt-2 pb-10 sm:px-10">
-      <div className="mx-auto flex w-full max-w-[1100px] flex-col gap-5 sm:gap-6">
+      <div className="mx-auto flex w-full max-w-cute-page 2xl:max-w-cute-page-wide flex-col gap-5 sm:gap-6">
         <MobileTopBar title="All Categories" backTo="/" />
         <div className="hidden w-full items-center justify-between sm:flex">
           <div className="flex flex-col gap-1">
-            <h1 className="font-heading text-[26px] font-semibold text-cute-text">
+            <h1 className="font-heading text-cute-fluid-26 font-semibold text-cute-text">
               All Categories
             </h1>
             <p className="font-body text-sm text-cute-text-muted">
@@ -59,7 +59,7 @@ export function AllCategoriesPage() {
             action={{ label: "Add a category", onClick: () => setAddOpen(true) }}
           />
         ) : (
-          <div className="flex w-full flex-col gap-3 sm:grid sm:grid-cols-3 sm:gap-5 lg:grid-cols-4">
+          <div className="flex w-full flex-col gap-3 sm:grid sm:grid-cols-[repeat(auto-fill,minmax(12rem,1fr))] sm:gap-5">
             {filteredCategories.map((category) => (
               <CategoryTile
                 key={category.id}

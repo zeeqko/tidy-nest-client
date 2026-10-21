@@ -40,6 +40,39 @@
   --radius-cute-s: 12px;
   --radius-cute-m: 18px;
   --radius-cute-l: 28px;
+
+  /* Font sizes: `--text-cute-N` = N px at a 16px root, expressed in rem
+     (use as `text-cute-11`, replacing `text-[11px]`). */
+  --text-cute-10: 0.625rem;
+  --text-cute-11: 0.6875rem;
+  --text-cute-13: 0.8125rem;
+  --text-cute-15: 0.9375rem;
+  --text-cute-17: 1.0625rem;
+  --text-cute-19: 1.1875rem;
+  --text-cute-22: 1.375rem;
+  --text-cute-26: 1.625rem;
+  --text-cute-28: 1.75rem;
+  --text-cute-30: 1.875rem;
+
+  /* Fluid headings: `--text-cute-fluid-N` has minimum = today's phone size N px
+     and grows modestly with viewport width (use as `text-cute-fluid-26`).
+     Reaches max ~1.25x around 1600px wide. */
+  --text-cute-fluid-22: clamp(1.375rem, 1.2rem + 0.55vw, 1.75rem);
+  --text-cute-fluid-26: clamp(1.625rem, 1.43rem + 0.6vw, 2rem);
+  --text-cute-fluid-28: clamp(1.75rem, 1.55rem + 0.65vw, 2.125rem);
+  --text-cute-fluid-30: clamp(1.875rem, 1.65rem + 0.7vw, 2.25rem);
+
+  /* Page container widths: `max-w-cute-page` (80rem = 1280px) by default,
+     `2xl:max-w-cute-page-wide` (100rem = 1600px) from the 2xl breakpoint. */
+  --container-cute-page: 80rem;
+  --container-cute-page-wide: 100rem;
+}
+
+/* Fluid card grid: auto-fill columns at least 10rem wide. Meant for `sm` and
+   up, paired with the phone default: `grid grid-cols-2 sm:cute-card-grid`. */
+@utility cute-card-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(10rem, 1fr));
 }
 
 html {

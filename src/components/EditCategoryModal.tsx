@@ -187,8 +187,8 @@ export function EditCategoryModal({ category, onClose, onSaved }: EditCategoryMo
       level="elevated"
       onClose={onClose}
       closeGuard={closeGuard}
-      maxWidthClassName="sm:max-w-[460px]"
-      bodyClassName="gap-[22px] px-5 py-4 sm:p-8 sm:pt-5"
+      maxWidthClassName="sm:max-w-[28.75rem]"
+      bodyClassName="gap-[1.375rem] px-5 py-4 sm:p-8 sm:pt-5"
       title={isEdit ? "Edit Category" : "Add Category"}
       subtitle={
         isEdit
@@ -201,7 +201,7 @@ export function EditCategoryModal({ category, onClose, onSaved }: EditCategoryMo
             <button
               type="button"
               onClick={() => setConfirmingDelete(true)}
-              className="flex items-center gap-1.5 self-start px-1 py-2.5 font-body text-[13px] font-semibold text-cute-destructive transition hover:opacity-80"
+              className="flex items-center gap-1.5 self-start px-1 py-2.5 font-body text-cute-13 font-semibold text-cute-destructive transition hover:opacity-80"
             >
               <Trash2 size={14} />
               Delete Category
@@ -221,7 +221,7 @@ export function EditCategoryModal({ category, onClose, onSaved }: EditCategoryMo
               type="button"
               onClick={handleSave}
               disabled={saving}
-              className="flex flex-1 items-center justify-center gap-1.5 rounded-full bg-cute-primary px-4 py-[13px] font-body text-sm font-semibold text-cute-primary-foreground transition hover:brightness-105 disabled:opacity-60 sm:flex-none sm:py-2.5"
+              className="flex flex-1 items-center justify-center gap-1.5 rounded-full bg-cute-primary px-4 py-[0.8125rem] font-body text-sm font-semibold text-cute-primary-foreground transition hover:brightness-105 disabled:opacity-60 sm:flex-none sm:py-2.5"
             >
               <Check size={16} />
               {saving ? "Saving…" : isEdit ? "Save Changes" : "Create Category"}
@@ -242,13 +242,13 @@ export function EditCategoryModal({ category, onClose, onSaved }: EditCategoryMo
             value={name}
             onChange={(e) => setName(e.target.value)}
             placeholder="e.g. Food"
-            className="w-full rounded-full border border-cute-border bg-cute-surface-alt px-[22px] py-4 font-body text-sm text-cute-text outline-none transition focus:border-cute-primary"
+            className="w-full rounded-full border border-cute-border bg-cute-surface-alt px-[1.375rem] py-4 font-body text-sm text-cute-text outline-none transition focus:border-cute-primary"
           />
         </label>
 
         <div className="flex w-full flex-col gap-2.5">
           <FieldLabel>Icon</FieldLabel>
-          <div className="flex flex-wrap items-center gap-[9px]">
+          <div className="flex flex-wrap items-center gap-[0.5625rem]">
             {Object.entries(illustrationIcons).map(([iconName, src]) => {
               const selected = icon === iconName;
               return (
@@ -257,7 +257,7 @@ export function EditCategoryModal({ category, onClose, onSaved }: EditCategoryMo
                   type="button"
                   aria-label={`Illustration ${iconName}`}
                   onClick={() => setIcon(iconName)}
-                  className={`flex h-[38px] w-[38px] items-center justify-center overflow-hidden rounded-full transition ${
+                  className={`flex h-[2.375rem] w-[2.375rem] items-center justify-center overflow-hidden rounded-full transition ${
                     selected ? "ring-2 ring-cute-text" : "opacity-70 hover:opacity-100"
                   }`}
                 >
@@ -265,7 +265,7 @@ export function EditCategoryModal({ category, onClose, onSaved }: EditCategoryMo
                 </button>
               );
             })}
-            <span className="h-[26px] w-px shrink-0 bg-cute-border" aria-hidden="true" />
+            <span className="h-[1.625rem] w-px shrink-0 bg-cute-border" aria-hidden="true" />
             {Object.entries(categoryIconOptions).map(([iconName, Icon]) => {
               const selected = icon === iconName;
               return (
@@ -274,7 +274,7 @@ export function EditCategoryModal({ category, onClose, onSaved }: EditCategoryMo
                   type="button"
                   aria-label={`Icon ${iconName}`}
                   onClick={() => setIcon(iconName)}
-                  className={`flex h-[38px] w-[38px] items-center justify-center rounded-full transition ${
+                  className={`flex h-[2.375rem] w-[2.375rem] items-center justify-center rounded-full transition ${
                     selected
                       ? "bg-cute-accent text-cute-accent-foreground ring-2 ring-cute-text"
                       : "bg-cute-surface-alt text-cute-text-muted hover:brightness-95"

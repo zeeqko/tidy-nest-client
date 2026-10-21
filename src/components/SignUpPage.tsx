@@ -62,7 +62,7 @@ export function SignUpPage() {
 
   return (
     <AuthShell subtitle="Make a cozy home for everything you own.">
-      <form className="flex w-full max-w-[400px] flex-col gap-5" onSubmit={handleSubmit} noValidate>
+      <form className="flex w-full max-w-[25rem] flex-col gap-5" onSubmit={handleSubmit} noValidate>
         <label className="flex w-full flex-col gap-1.5">
           <span className="font-body text-sm font-medium text-cute-text">Name</span>
           <input

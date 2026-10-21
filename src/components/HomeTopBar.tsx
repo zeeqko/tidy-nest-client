@@ -75,7 +75,7 @@ export function HomeTopBar({ onMenuClick, menuOpen, className }: HomeTopBarProps
               className="fixed inset-0 z-30 bg-[#4A3F5555]"
               onClick={() => setAccountMenuOpen(false)}
             />
-            <div className="absolute right-0 top-12 z-40 flex w-[200px] flex-col gap-0.5 rounded-cute-m border border-cute-border bg-cute-surface p-2.5 shadow-[0_12px_28px_-6px_rgba(74,63,85,0.19)]">
+            <div className="absolute right-0 top-12 z-40 flex w-[12.5rem] flex-col gap-0.5 rounded-cute-m border border-cute-border bg-cute-surface p-2.5 shadow-[0_12px_28px_-6px_rgba(74,63,85,0.19)]">
               <div className="border-b border-cute-border px-3 pt-1 pb-2.5">
                 <p className="truncate font-heading text-sm font-semibold text-cute-text">
                   {user.name}

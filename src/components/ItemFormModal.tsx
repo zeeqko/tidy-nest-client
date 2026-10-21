@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Camera, Image, Sparkles, X } from "lucide-react";
+import { Camera, ChevronDown, Image, Sparkles, X } from "lucide-react";
 import type { ApiCategory } from "../api/categories";
 import { createItem, getItem, updateItem } from "../api/inventory";
 import { recognizeItem } from "../api/recognition";
@@ -43,7 +43,7 @@ function Field({
   children: React.ReactNode;
 }) {
   return (
-    <label className="flex w-full flex-col gap-1.5">
+    <label className="flex w-full min-w-0 flex-col gap-1.5">
       <span className="font-body text-xs font-semibold text-cute-text-muted">{label}</span>
       {children}
       {helper && <span className="font-body text-xs text-cute-text-muted">{helper}</span>}
@@ -83,8 +83,10 @@ export function ItemFormModal({
   // dates by default (selectedCategory?.reminderOnExpiry === false). Defaults
   // open when the item already carries a date (e.g. edit mode on a
   // non-tracking category) so existing data is never hidden on open.
-  const [showDateFields, setShowDateFields] = useState(
-    () => Boolean(item?.opensOn || item?.expiryDate),
+  // null = no manual choice yet, so follow the category default (open for
+  // reminderOnExpiry categories); true/false = the user's explicit toggle.
+  const [showDateFields, setShowDateFields] = useState<boolean | null>(
+    () => (item?.opensOn || item?.expiryDate ? true : null),
   );
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -285,7 +287,7 @@ export function ItemFormModal({
   // just stop being shown if the newly selected category doesn't track
   // dates by default and the disclosure hasn't been opened.
   const remindsByDefault = Boolean(selectedCategory?.reminderOnExpiry);
-  const datesVisible = remindsByDefault || showDateFields;
+  const datesVisible = showDateFields ?? remindsByDefault;
 
   const handleSubmit = async (event: React.FormEvent) => {
     event.preventDefault();
@@ -350,31 +352,8 @@ export function ItemFormModal({
       closeGuard={closeGuard}
       as="form"
       onSubmit={handleSubmit}
-      maxWidthClassName="sm:max-w-[520px]"
+      maxWidthClassName="sm:max-w-[32.5rem]"
       title={item ? "Edit Item" : "Add Item"}
-      footer={
-        <>
-          <button
-            type="button"
-            onClick={onClose}
-            className="hidden flex-1 items-center justify-center rounded-full border-[1.5px] border-cute-border px-4 py-[13px] font-body text-sm font-semibold text-cute-text transition hover:bg-cute-surface-alt sm:flex"
-          >
-            Cancel
-          </button>
-          <button
-            type="submit"
-            disabled={saving || recognizing}
-            className="flex flex-1 items-center justify-center rounded-full bg-cute-primary px-4 py-[13px] font-body text-sm font-semibold text-cute-primary-foreground transition hover:brightness-105 disabled:opacity-60"
-          >
-            {saving
-              ? "Saving…"
-              : item
-                ? "Save Changes"
-                : "Add Item"}
-          </button>
-        </>
-      }
-      footerClassName="flex w-full shrink-0 gap-3 border-t border-cute-border bg-cute-surface px-5 pt-3.5 pb-[calc(1rem+env(safe-area-inset-bottom))] sm:border-0 sm:bg-transparent sm:px-8 sm:pt-0 sm:pb-8"
     >
         <div className="flex w-full flex-col gap-1.5">
           <span className="font-body text-xs font-semibold text-cute-text-muted">
@@ -517,8 +496,9 @@ export function ItemFormModal({
 
         <div className="grid w-full grid-cols-2 gap-4">
           <Field label="Category">
+            <div className="relative w-full">
             <select
-              className={inputClass}
+              className={`${inputClass} appearance-none pr-10`}
               value={categoryId ?? ""}
               onChange={(e) => {
                 const id = Number(e.target.value);
@@ -532,6 +512,11 @@ export function ItemFormModal({
                 </option>
               ))}
             </select>
+            <ChevronDown
+              size={15}
+              className="pointer-events-none absolute top-1/2 right-3.5 -translate-y-1/2 text-cute-text-muted"
+            />
+            </div>
           </Field>
           <Field label="Subcategory">
             <OptionPicker
@@ -604,13 +589,13 @@ export function ItemFormModal({
 
         {datesVisible ? (
           <div className="flex w-full flex-col gap-2">
-            <div className="grid w-full grid-cols-1 gap-4 sm:grid-cols-2">
+            <div className="grid w-full grid-cols-[minmax(0,1fr)] gap-4 sm:grid-cols-2">
               <Field
                 label="Opened On"
                 helper="For items with a shelf life once opened, like food or makeup."
               >
                 <input
-                  className={`${inputClass} min-w-0`}
+                  className={`${inputClass} min-w-0 max-w-full appearance-none`}
                   type="date"
                   value={opensOn}
                   onChange={(e) => setOpensOn(e.target.value)}
@@ -618,22 +603,20 @@ export function ItemFormModal({
               </Field>
               <Field label="Expiry Date (optional)">
                 <input
-                  className={`${inputClass} min-w-0`}
+                  className={`${inputClass} min-w-0 max-w-full appearance-none`}
                   type="date"
                   value={expiryDate}
                   onChange={(e) => setExpiryDate(e.target.value)}
                 />
               </Field>
             </div>
-            {!remindsByDefault && (
-              <button
-                type="button"
-                onClick={() => setShowDateFields(false)}
-                className="self-start font-body text-xs font-semibold text-cute-text-muted underline-offset-2 hover:underline"
-              >
-                Hide date fields
-              </button>
-            )}
+            <button
+              type="button"
+              onClick={() => setShowDateFields(false)}
+              className="self-start font-body text-xs font-semibold text-cute-text-muted underline-offset-2 hover:underline"
+            >
+              Hide date fields
+            </button>
           </div>
         ) : (
           <button
@@ -668,6 +651,27 @@ export function ItemFormModal({
             {error}
           </p>
         )}
+
+        <div className="flex w-full shrink-0 gap-3 pt-2">
+          <button
+            type="button"
+            onClick={onClose}
+            className="hidden flex-1 items-center justify-center rounded-full border-[1.5px] border-cute-border px-4 py-[13px] font-body text-sm font-semibold text-cute-text transition hover:bg-cute-surface-alt sm:flex"
+          >
+            Cancel
+          </button>
+          <button
+            type="submit"
+            disabled={saving || recognizing}
+            className="flex flex-1 items-center justify-center rounded-full bg-cute-primary px-4 py-[13px] font-body text-sm font-semibold text-cute-primary-foreground transition hover:brightness-105 disabled:opacity-60"
+          >
+            {saving
+              ? "Saving…"
+              : item
+                ? "Save Changes"
+                : "Add Item"}
+          </button>
+        </div>
         </ModalShell>
   );
 }

@@ -1,7 +1,7 @@
 import { FilterPill } from "./FilterPill";
 
 interface SubcategoryFiltersProps {
-  subcategories: string[];
+  subcategories: { id: string; name: string }[];
   active: string;
   onSelect: (value: string) => void;
 }
@@ -18,10 +18,10 @@ export function SubcategoryFilters({
       <FilterPill label="All" active={active === "all"} onClick={() => onSelect("all")} />
       {subcategories.map((subcategory) => (
         <FilterPill
-          key={subcategory}
-          label={subcategory}
-          active={active === subcategory}
-          onClick={() => onSelect(subcategory)}
+          key={subcategory.id}
+          label={subcategory.name}
+          active={active === subcategory.id}
+          onClick={() => onSelect(subcategory.id)}
         />
       ))}
     </div>

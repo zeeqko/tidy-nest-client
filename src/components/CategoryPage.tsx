@@ -9,12 +9,18 @@ import { EmptyState } from "./EmptyState";
 import { FilterPill } from "./FilterPill";
 import { MobileTopBar } from "./MobileTopBar";
 import { ItemCard } from "./ItemCard";
+import { ITEM_GRID_BASE } from "./itemGridClass";
 import { ItemDetailModal } from "./ItemDetailModal";
 import { AddItemChooser } from "./AddItemChooser";
 import { BulkAddItemsModal } from "./BulkAddItemsModal";
 import { ItemFormModal } from "./ItemFormModal";
 import { ConfirmDeleteModal } from "./ConfirmDeleteModal";
 import { ManageCategoriesModal } from "./ManageCategoriesModal";
+import { SortSelect } from "./SortSelect";
+import { FilterSelect } from "./FilterSelect";
+import { TagFilters } from "./TagFilters";
+import { aggregateTags } from "../lib/aggregateTags";
+import { sortItems, type SortOrder } from "../lib/sortItems";
 import type { OrganizingItem } from "../types";
 
 export function CategoryPage() {
@@ -31,6 +37,15 @@ export function CategoryPage() {
 
   const [activeSubcategory, setActiveSubcategory] = useState("all");
   const [activeTag, setActiveTag] = useState("all");
+  // Reset filters during render when the route switches category (same component
+  // instance is reused), so no stale filter is ever painted. Sort is kept (D15).
+  const [prevCategoryId, setPrevCategoryId] = useState(categoryId);
+  if (prevCategoryId !== categoryId) {
+    setPrevCategoryId(categoryId);
+    setActiveSubcategory("all");
+    setActiveTag("all");
+  }
+  const [sortOrder, setSortOrder] = useState<SortOrder>("newest");
   const [selectedItem, setSelectedItem] = useState<OrganizingItem | null>(null);
   const [manageOpen, setManageOpen] = useState(false);
   const [chooserOpen, setChooserOpen] = useState(false);
@@ -65,35 +80,42 @@ export function CategoryPage() {
   // filter pills.
   const subcategories = category?.subcategories ?? [];
 
-  const tags = useMemo(() => {
-    const map = new Map<string, { label: string; bg: string; fg: string; count: number }>();
-    for (const item of categoryItems) {
-      for (const tag of item.tags) {
-        const existing = map.get(tag.label);
-        if (existing) existing.count += 1;
-        else map.set(tag.label, { ...tag, count: 1 });
-      }
-    }
-    return Array.from(map.values());
-  }, [categoryItems]);
+  const tags = useMemo(() => aggregateTags(categoryItems), [categoryItems]);
 
-  const filteredItems = categoryItems.filter((item) => {
-    const matchesSubcategory =
-      activeSubcategory === "all" || item.subCategoryId === activeSubcategory;
-    const matchesTag = activeTag === "all" || item.tags.some((tag) => tag.label === activeTag);
-    return matchesSubcategory && matchesTag;
-  });
+  // Derived so a stale id/label (item edited/deleted) never filters or mis-highlights.
+  const effectiveSubcategory = subcategories.some((s) => s.id === activeSubcategory)
+    ? activeSubcategory
+    : "all";
+  const effectiveTag =
+    activeTag === "all" || tags.some((t) => t.label === activeTag) ? activeTag : "all";
+
+  const filteredItems = useMemo(
+    () =>
+      categoryItems.filter((item) => {
+        const matchesSubcategory =
+          effectiveSubcategory === "all" || item.subCategoryId === effectiveSubcategory;
+        const matchesTag =
+          effectiveTag === "all" || item.tags.some((tag) => tag.label === effectiveTag);
+        return matchesSubcategory && matchesTag;
+      }),
+    [categoryItems, effectiveSubcategory, effectiveTag],
+  );
+
+  const sortedItems = useMemo(
+    () => sortItems(filteredItems, sortOrder),
+    [filteredItems, sortOrder],
+  );
 
   if (!category) {
     if (categoriesLoading) {
       return (
-        <div className="flex min-h-[60vh] w-full items-center justify-center">
+        <div className="flex min-h-[60dvh] w-full items-center justify-center">
           <p className="font-body text-sm text-cute-text-muted">Loading…</p>
         </div>
       );
     }
     return (
-      <div className="flex min-h-[60vh] w-full flex-col items-center justify-center gap-3 px-6 text-center">
+      <div className="flex min-h-[60dvh] w-full flex-col items-center justify-center gap-3 px-6 text-center">
         <p className="font-heading text-xl font-semibold text-cute-text">Category not found</p>
         <Link
           to="/categories"
@@ -105,14 +127,11 @@ export function CategoryPage() {
     );
   }
 
-  const subcategorySummary = subcategories
-    .slice(0, 3)
-    .map((sub) => sub.name)
-    .join(", ");
+  const showSort = !error && !loading && sortedItems.length > 0;
 
   return (
     <div className="w-full px-5 pt-2 pb-10 sm:px-10">
-      <div className="mx-auto flex w-full max-w-[1200px] flex-col gap-5 sm:gap-7">
+      <div className="mx-auto flex w-full max-w-cute-page 2xl:max-w-cute-page-wide flex-col gap-5 sm:gap-7">
         <MobileTopBar title={category.label} backTo="/categories" />
         <div className="flex w-full items-center gap-3.5 sm:hidden">
           <CategoryBadge
@@ -123,7 +142,6 @@ export function CategoryPage() {
           />
           <p className="min-w-0 flex-1 truncate font-body text-sm text-cute-text-muted">
             {categoryItems.length} {categoryItems.length === 1 ? "item" : "items"}
-            {subcategorySummary ? ` · ${subcategorySummary}` : ""}
           </p>
         </div>
         <div className="hidden w-full flex-wrap items-center justify-between gap-4 sm:flex">
@@ -135,12 +153,11 @@ export function CategoryPage() {
               size={62}
             />
             <div className="flex flex-col gap-0.5">
-              <h1 className="font-heading text-[28px] font-semibold text-cute-text">
+              <h1 className="font-heading text-cute-fluid-28 font-semibold text-cute-text">
                 {category.label}
               </h1>
               <p className="font-body text-sm text-cute-text-muted">
                 {categoryItems.length} {categoryItems.length === 1 ? "item" : "items"}
-                {subcategorySummary ? ` · ${subcategorySummary}` : ""}
               </p>
             </div>
           </div>
@@ -165,11 +182,11 @@ export function CategoryPage() {
         </div>
 
         {categoryItems.length > 0 && subcategories.length > 0 && (
-          <div className="flex w-full flex-wrap items-center gap-2.5">
+          <div className="hidden w-full flex-wrap items-center gap-2.5 sm:flex">
             <FilterPill
               label="All"
               size="md"
-              active={activeSubcategory === "all"}
+              active={effectiveSubcategory === "all"}
               onClick={() => setActiveSubcategory("all")}
             />
             {subcategories.map((sub) => (
@@ -177,7 +194,7 @@ export function CategoryPage() {
                 key={sub.id}
                 label={sub.name}
                 size="md"
-                active={activeSubcategory === sub.id}
+                active={effectiveSubcategory === sub.id}
                 onClick={() => setActiveSubcategory(sub.id)}
               />
             ))}
@@ -185,38 +202,52 @@ export function CategoryPage() {
         )}
 
         {categoryItems.length > 0 && tags.length > 0 && (
-          <div className="flex w-full flex-wrap items-center gap-2">
-            <button
-              type="button"
-              onClick={() => setActiveTag("all")}
-              className={`rounded-full px-4 py-[7px] font-body text-xs font-semibold transition ${
-                activeTag === "all"
-                  ? "bg-cute-secondary text-cute-secondary-foreground"
-                  : "border border-cute-border bg-cute-surface text-cute-text hover:bg-cute-surface-alt"
-              }`}
-            >
-              All Tags
-            </button>
-            {tags.map((tag) => (
-              <button
-                key={tag.label}
-                type="button"
-                onClick={() => setActiveTag(tag.label)}
-                className={`flex items-center gap-1.5 rounded-full border px-3.5 py-[7px] font-body text-xs transition ${
-                  activeTag === tag.label
-                    ? "border-cute-text bg-cute-surface-alt font-semibold text-cute-text"
-                    : "border-cute-border bg-cute-surface text-cute-text hover:bg-cute-surface-alt"
-                }`}
-              >
-                <span
-                  className="h-[7px] w-[7px] rounded-full"
-                  style={{ backgroundColor: tag.bg, border: `1px solid ${tag.fg}` }}
-                />
-                {tag.label} ({tag.count})
-              </button>
-            ))}
+          <div className="hidden sm:block">
+            <TagFilters tags={tags} active={effectiveTag} onSelect={setActiveTag} />
           </div>
         )}
+
+        <div
+          className={`-mb-2 flex w-full flex-wrap gap-2 sm:-mb-4 sm:max-w-[1200px] sm:justify-end ${
+            showSort ? "" : "sm:hidden"
+          }`}
+        >
+          <FilterSelect
+            label="Filter by subcategory"
+            value={effectiveSubcategory}
+            options={
+              subcategories.length > 0
+                ? [
+                    { value: "all", label: "All subcategories" },
+                    ...subcategories.map((sub) => ({ value: sub.id, label: sub.name })),
+                  ]
+                : [{ value: "all", label: "No subcategories" }]
+            }
+            onChange={setActiveSubcategory}
+            disabled={subcategories.length === 0}
+            className="flex-1 basis-[6.5rem] sm:hidden"
+          />
+          <FilterSelect
+            label="Filter by tag"
+            value={effectiveTag}
+            options={
+              tags.length > 0
+                ? [
+                    { value: "all", label: "All tags" },
+                    ...tags.map((t) => ({ value: t.label, label: `${t.label} (${t.count})` })),
+                  ]
+                : [{ value: "all", label: "No tags" }]
+            }
+            onChange={setActiveTag}
+            disabled={tags.length === 0}
+            className="flex-1 basis-[6.5rem] sm:hidden"
+          />
+          <SortSelect
+            value={sortOrder}
+            onChange={setSortOrder}
+            className={`flex-1 basis-[6.5rem] sm:flex-none ${showSort ? "" : "sm:hidden"}`}
+          />
+        </div>
 
         {error ? (
           <p className="w-full py-10 text-center font-body text-sm text-cute-danger">
@@ -250,16 +281,14 @@ export function CategoryPage() {
             }}
           />
         ) : (
-          <div className="grid w-full grid-cols-2 gap-3 sm:grid-cols-3 sm:gap-6 md:grid-cols-4 xl:grid-cols-5">
-            {filteredItems.map((item) => (
+          <div className={`${ITEM_GRID_BASE} max-w-[1200px]`}>
+            {sortedItems.map((item) => (
               <ItemCard
                 key={item.id}
                 item={item}
                 density="full"
-                chipMode="subcategory"
+                hideChip
                 onSelect={setSelectedItem}
-                onEdit={openEdit}
-                onDelete={setDeleteTarget}
               />
             ))}
           </div>

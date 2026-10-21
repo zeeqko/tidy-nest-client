@@ -1,7 +1,7 @@
 import { SearchX } from "lucide-react";
 import { EmptyState } from "./EmptyState";
 import { ItemCard } from "./ItemCard";
-import { ITEM_GRID_BASE } from "./itemGridClass";
+import { ITEM_GRID } from "./itemGridClass";
 import type { OrganizingItem } from "../types";
 
 interface ItemsGridProps {
@@ -26,7 +26,7 @@ export function ItemsGrid({ items, onSelect, onClearFilters }: ItemsGridProps) {
   }
 
   return (
-    <div className={`${ITEM_GRID_BASE} max-w-[1100px]`}>
+    <div className={`${ITEM_GRID}`}>
       {items.map((item) => (
         <ItemCard
           key={item.id}

@@ -9,7 +9,7 @@ import { EmptyState } from "./EmptyState";
 import { FilterPill } from "./FilterPill";
 import { MobileTopBar } from "./MobileTopBar";
 import { ItemCard } from "./ItemCard";
-import { ITEM_GRID_BASE } from "./itemGridClass";
+import { ITEM_GRID, ITEM_SORT_ROW } from "./itemGridClass";
 import { ItemDetailModal } from "./ItemDetailModal";
 import { AddItemChooser } from "./AddItemChooser";
 import { BulkAddItemsModal } from "./BulkAddItemsModal";
@@ -131,7 +131,7 @@ export function CategoryPage() {
 
   return (
     <div className="w-full px-5 pt-2 pb-10 sm:px-10">
-      <div className="mx-auto flex w-full max-w-cute-page 2xl:max-w-cute-page-wide flex-col gap-5 sm:gap-7">
+      <div className="mx-auto flex w-full max-w-cute-page 2xl:max-w-cute-page-wide flex-col gap-4 sm:gap-9">
         <MobileTopBar title={category.label} backTo="/categories" />
         <div className="flex w-full items-center gap-3.5 sm:hidden">
           <CategoryBadge
@@ -208,7 +208,7 @@ export function CategoryPage() {
         )}
 
         <div
-          className={`-mb-2 flex w-full flex-wrap gap-2 sm:-mb-4 sm:max-w-[1200px] sm:justify-end ${
+          className={`${ITEM_SORT_ROW} ${
             showSort ? "" : "sm:hidden"
           }`}
         >
@@ -281,7 +281,7 @@ export function CategoryPage() {
             }}
           />
         ) : (
-          <div className={`${ITEM_GRID_BASE} max-w-[1200px]`}>
+          <div className={`${ITEM_GRID}`}>
             {sortedItems.map((item) => (
               <ItemCard
                 key={item.id}

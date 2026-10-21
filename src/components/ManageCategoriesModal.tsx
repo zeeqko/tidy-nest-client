@@ -133,22 +133,23 @@ export function ManageCategoriesModal({
               <div
                 key={category.id}
                 className={`flex w-full flex-col rounded-cute-m ${
-                  isExpanded ? "bg-cute-surface-alt p-3.5" : ""
+                  isExpanded ? "bg-cute-surface-alt p-3 sm:p-3.5" : ""
                 }`}
               >
-                <div className={`flex w-full flex-wrap items-center gap-x-3 gap-y-1 sm:flex-nowrap sm:gap-3 ${isExpanded ? "" : "p-2.5"}`}>
+                <div className={`flex w-full items-center gap-3 ${isExpanded ? "" : "py-2 sm:p-2.5"}`}>
                   <CategoryBadge
                     iconSrc={ui.iconSrc}
                     iconName={ui.iconName}
                     colour={ui.colour}
                     size={46}
+                    className="max-sm:size-10!"
                   />
-                  <div className="flex min-w-[8rem] flex-1 flex-col gap-px sm:min-w-0">
+                  <div className="flex min-w-0 flex-1 flex-col gap-px">
                     <p className="truncate font-heading text-cute-15 font-medium text-cute-text">
                       {category.name}
                     </p>
                   </div>
-                  <div className="ml-auto flex shrink-0 items-center gap-2">
+                  <div className="ml-auto -mr-2.5 flex shrink-0 items-center sm:mr-0 sm:gap-2">
                     <button
                       type="button"
                       aria-label={`Edit ${category.name}`}
@@ -168,7 +169,7 @@ export function ManageCategoriesModal({
                     {/* Divider + always-on red tint keep Delete from reading as just
                         another icon in the row, so a mis-tap aimed at Edit/Expand
                         can't land on it. */}
-                    <span className="h-6 w-px shrink-0 bg-cute-border" aria-hidden="true" />
+                    <span className="mx-1 h-6 w-px shrink-0 bg-cute-border sm:mx-0" aria-hidden="true" />
                     <button
                       type="button"
                       aria-label={`Delete ${category.name}`}

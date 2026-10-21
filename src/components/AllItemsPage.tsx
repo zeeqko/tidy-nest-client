@@ -13,6 +13,7 @@ import { ConfirmDeleteModal } from "./ConfirmDeleteModal";
 import { deleteItem } from "../api/inventory";
 import { useItems } from "../hooks/useItems";
 import { useCategories } from "../hooks/useCategories";
+import { ITEM_SORT_ROW } from "./itemGridClass";
 import { SortSelect } from "./SortSelect";
 import { FilterSelect } from "./FilterSelect";
 import { sortItems, type SortOrder } from "../lib/sortItems";
@@ -119,8 +120,8 @@ export function AllItemsPage() {
           </div>
         )}
         <div
-          className={`flex w-full flex-wrap gap-2 sm:max-w-[1100px] sm:justify-end sm:gap-0 ${
-            showSort ? "sm:-mb-6" : "sm:hidden"
+          className={`${ITEM_SORT_ROW} ${
+            showSort ? "" : "sm:hidden"
           }`}
         >
           <FilterSelect

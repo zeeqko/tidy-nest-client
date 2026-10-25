@@ -1,6 +1,7 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useMemo } from "react";
 import { listCategories, type ApiCategory } from "../api/categories";
 import { toUiCategory } from "../data/categories";
+import { createResource } from "../lib/resourceCache";
 import type { Category } from "../types";
 
 interface UseCategoriesResult {
@@ -13,26 +14,12 @@ interface UseCategoriesResult {
   refresh: () => Promise<void>;
 }
 
+// One shared store per resource; the empty array is shared, so never mutate it.
+const store = createResource(listCategories, [] as ApiCategory[], "Failed to load categories");
+
 /** Loads categories (with nested tags) from the backend in a single request. */
 export function useCategories(): UseCategoriesResult {
-  const [apiCategories, setApiCategories] = useState<ApiCategory[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
-
-  const refresh = useCallback(async () => {
-    try {
-      setApiCategories(await listCategories());
-      setError(null);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to load categories");
-    } finally {
-      setLoading(false);
-    }
-  }, []);
-
-  useEffect(() => {
-    refresh();
-  }, [refresh]);
+  const { data: apiCategories, loading, error } = store.useResource();
 
   const categories = useMemo(() => apiCategories.map(toUiCategory), [apiCategories]);
 
@@ -41,6 +28,6 @@ export function useCategories(): UseCategoriesResult {
     categories,
     loading,
     error,
-    refresh,
+    refresh: store.refresh,
   };
 }

@@ -6,6 +6,7 @@ import { MobileTopBar } from "./MobileTopBar";
 import { FilterPill } from "./FilterPill";
 import { OutfitItemPicker } from "./OutfitItemPicker";
 import { OutfitCanvas, DEFAULT_SIZE } from "./OutfitCanvas";
+import { refreshLooksBounded } from "../hooks/useLooks";
 import { createLook, updateLook, type NewLook } from "../api/looks";
 import { useLook } from "../hooks/useLook";
 import { seedOccasions } from "../data/occasions";
@@ -70,6 +71,14 @@ export function OutfitBuilderPage() {
   const [occasion, setOccasion] = useState("");
   const [saving, setSaving] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
+  // Set false on unmount so a user who left during the refresh isn't pulled back.
+  const mountedRef = useRef(true);
+  useEffect(() => {
+    mountedRef.current = true;
+    return () => {
+      mountedRef.current = false;
+    };
+  }, []);
 
   // Prefills the form from the loaded look exactly once — `useLook` only
   // refetches if `id` itself changes, so guarding with a ref (rather than
@@ -246,9 +255,13 @@ export function OutfitBuilderPage() {
     try {
       if (isEditing && id) {
         await updateLook(id, payload);
+        await refreshLooksBounded();
+        if (!mountedRef.current) return;
         navigate(`/stylebook/${id}`);
       } else {
         await createLook(payload);
+        await refreshLooksBounded();
+        if (!mountedRef.current) return;
         navigate("/stylebook");
       }
     } catch (err) {

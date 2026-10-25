@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
 import { Pencil, Trash2 } from "lucide-react";
 import { MobileTopBar } from "./MobileTopBar";
@@ -6,6 +6,7 @@ import { OutfitCanvas } from "./OutfitCanvas";
 import { ConfirmDeleteModal } from "./ConfirmDeleteModal";
 import { useLook } from "../hooks/useLook";
 import { deleteLook } from "../api/looks";
+import { refreshLooksBounded } from "../hooks/useLooks";
 import { toPlacedItems } from "../lib/lookPlacements";
 
 /** Occasion badge treatment lifted from `LookCard`'s thumbnail overlay,
@@ -29,6 +30,14 @@ export function LookDetailPage() {
   const navigate = useNavigate();
   const { look, loading, error } = useLook(id);
   const [confirmingDelete, setConfirmingDelete] = useState(false);
+  // Set false on unmount so a user who left during the refresh isn't pulled back.
+  const mountedRef = useRef(true);
+  useEffect(() => {
+    mountedRef.current = true;
+    return () => {
+      mountedRef.current = false;
+    };
+  }, []);
   const [deleteError, setDeleteError] = useState<string | null>(null);
 
   const goToEdit = () => id && navigate(`/stylebook/${id}/edit`);
@@ -37,6 +46,8 @@ export function LookDetailPage() {
     if (!id) return;
     try {
       await deleteLook(id);
+      await refreshLooksBounded();
+      if (!mountedRef.current) return;
       navigate("/stylebook");
     } catch (err) {
       setDeleteError(err instanceof Error ? err.message : "Failed to delete this look");

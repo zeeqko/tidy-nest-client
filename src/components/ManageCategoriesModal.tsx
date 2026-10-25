@@ -6,10 +6,10 @@ import {
   deleteSubCategory,
   detachTag,
   createSubCategory,
-  listCategories,
   type ApiCategory,
 } from "../api/categories";
 import { toUiCategory } from "../data/categories";
+import { useCategories } from "../hooks/useCategories";
 import type { RefreshScope } from "../types";
 import { CategoryBadge } from "./CategoryBadge";
 import { ConfirmDeleteModal } from "./ConfirmDeleteModal";
@@ -22,9 +22,9 @@ interface ManageCategoriesModalProps {
   onClose: (changes: RefreshScope) => void;
   /**
    * Parent-supplied categories (contract C1). When provided, the modal renders
-   * these instead of self-fetching, and calls `onChanged()` after each mutation
-   * instead of refetching itself. When omitted, today's self-fetching behaviour
-   * is preserved so existing callers need no changes.
+   * these without any extra request and calls `onChanged()` after each
+   * mutation. When omitted, the shared `useCategories()` store is used and
+   * refreshed after each mutation.
    */
   apiCategories?: ApiCategory[];
   onChanged?: () => void | Promise<void>;
@@ -38,30 +38,36 @@ interface PendingDelete {
   affectsItems?: boolean;
 }
 
-export function ManageCategoriesModal({
-  onClose,
-  apiCategories: apiCategoriesProp,
-  onChanged,
-}: ManageCategoriesModalProps) {
-  const controlled = apiCategoriesProp !== undefined;
-  // Self-fetch fallback, only used when the parent doesn't supply apiCategories.
-  const [fetchedCategories, setFetchedCategories] = useState<ApiCategory[]>([]);
-  const selfRefresh = useCallback(async () => {
-    try {
-      setFetchedCategories(await listCategories());
-    } catch {
-      // Swallowed to match the previous self-fetching hook's behaviour, which
-      // never surfaced load failures through this modal's own error banner.
-    }
-  }, []);
-  useEffect(() => {
-    if (!controlled) selfRefresh();
-    // Intentionally run once per mount for the self-fetching fallback; whether
-    // this instance is controlled doesn't change over its lifetime.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
-  const apiCategories = controlled ? apiCategoriesProp : fetchedCategories;
+/** Public entry point. Callers that already hold categories pass them in (no
+ *  extra request); otherwise the shared store is used, so edits made here show
+ *  up on the page behind the modal as soon as it closes. */
+export function ManageCategoriesModal(props: ManageCategoriesModalProps) {
+  if (props.apiCategories !== undefined) {
+    return <ManageCategoriesModalInner {...props} apiCategories={props.apiCategories} />;
+  }
+  return <SelfFetchingManageCategoriesModal {...props} />;
+}
 
+function SelfFetchingManageCategoriesModal({ onClose, onChanged }: ManageCategoriesModalProps) {
+  const { apiCategories, refresh } = useCategories();
+  const handleChanged = useCallback(async () => {
+    await refresh();
+    await onChanged?.();
+  }, [refresh, onChanged]);
+  return (
+    <ManageCategoriesModalInner
+      onClose={onClose}
+      apiCategories={apiCategories}
+      onChanged={handleChanged}
+    />
+  );
+}
+
+function ManageCategoriesModalInner({
+  onClose,
+  apiCategories,
+  onChanged,
+}: ManageCategoriesModalProps & { apiCategories: ApiCategory[] }) {
   const [expandedId, setExpandedId] = useState<number | null>(null);
   const [editingCategory, setEditingCategory] = useState<ApiCategory | null>(null);
   const [addingCategory, setAddingCategory] = useState(false);
@@ -99,11 +105,7 @@ export function ManageCategoriesModal({
       await action();
       changes.current.categories = true;
       if (affectsItems) changes.current.items = true;
-      if (controlled) {
-        await onChanged?.();
-      } else {
-        await selfRefresh();
-      }
+      await onChanged?.();
     } catch (err) {
       setError(err instanceof Error ? err.message : "Something went wrong");
       throw err;
@@ -291,14 +293,9 @@ export function ManageCategoriesModal({
         onSaved={(saved) => {
           changes.current.categories ||= saved.categories;
           changes.current.items ||= saved.items;
-          if (controlled) {
-            // Matches run()'s handling of the same parent-supplied callback:
-            // a rejection here has nowhere useful to go, so swallow it
-            // rather than let it surface as an unhandled rejection.
-            onChanged?.()?.catch(() => {});
-          } else {
-            selfRefresh();
-          }
+          // A rejection here has nowhere useful to go, so swallow it rather
+          // than let it surface as an unhandled rejection.
+          onChanged?.()?.catch(() => {});
         }}
       />
     )}

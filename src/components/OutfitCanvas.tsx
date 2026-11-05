@@ -1,45 +1,65 @@
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import type Konva from "konva";
 import { Image as KonvaImage, Layer, Rect, Stage, Transformer } from "react-konva";
-import { ArrowDownToLine, ArrowUpToLine, Shirt, Trash2 } from "lucide-react";
+import { ArrowDownToLine, ArrowUpToLine, Copy, Shirt, Trash2 } from "lucide-react";
 import type { PlacedItem } from "./OutfitBuilderPage";
+import {
+  DESIGN_HEIGHT,
+  DESIGN_WIDTH,
+  clampItem,
+  fitToScreen,
+  type Rect as LogicalRect,
+} from "../lib/canvasSpace";
 
-/** Fixed logical coordinate space every placed item's (x, y, width, height)
- *  lives in, regardless of how large the Stage is actually rendered on
- *  screen. The Stage's on-screen pixel size tracks its container (measured
- *  via ResizeObserver, so it fits a ~440px desktop column or a narrower
- *  mobile section), but a uniform Konva stage scale maps that pixel size
- *  back onto this fixed DESIGN_WIDTH x DESIGN_HEIGHT space. That keeps saved
- *  transforms resolution-independent: the same look reconstructs identically
- *  (via LookCard's percentage-based layout) no matter what screen size it
- *  was built or is later viewed on. Matches the 4:5 aspect ratio of the
- *  panel this canvas renders inside. */
-const DESIGN_WIDTH = 400;
-const DESIGN_HEIGHT = 500;
+/** Every placed item's (x, y, width, height) lives in the fixed
+ *  DESIGN_WIDTH x DESIGN_HEIGHT (400x711, 9:16) logical space from
+ *  `canvasSpace`. The Stage itself fills its container (full-screen in the
+ *  builder); `fitToScreen` maps the logical space into it with a uniform
+ *  scale plus a centring offset (letterboxed). Resizing the window or
+ *  rotating the device only changes that scale/offset, never item positions. */
 const MIN_SIZE = 24;
 
-/** Default footprint given to every newly-added placement (`OutfitBuilderPage`'s
- *  `addItem`). Exported from here (rather than defined in `OutfitBuilderPage`
- *  and imported back) to avoid a circular runtime import — this file already
- *  imports the `PlacedItem` *type* from `OutfitBuilderPage`, but that's erased
- *  at compile time, whereas this constant is a real value both files need at
- *  runtime. T4's aspect-ratio fit below (see `useAspectRatioFit`) uses this to
- *  decide whether a placement is still at its untouched default size. */
+/** Untouched footprint of a newly-added placement in the current
+ *  `OutfitBuilderPage.addItem`. T4's aspect-ratio fit below
+ *  (`PlacedNode`'s image-load effect) uses it to recognise a placement the
+ *  user hasn't resized yet. Exported (rather than defined in the page) to
+ *  avoid a circular runtime import. */
 export const DEFAULT_SIZE = 180;
 
-type TransformPatch = Pick<PlacedItem, "x" | "y" | "width" | "height" | "rotation">;
+/** Dotted backdrop drawn behind the (transparent) Stage, across the whole
+ *  stage area including any letterbox margins. */
+const DOTTED_BACKGROUND = {
+  backgroundImage: "radial-gradient(var(--color-cute-border) 1.5px, transparent 1.5px)",
+  backgroundSize: "18px 18px",
+} as const;
 
-interface OutfitCanvasProps {
+export type TransformPatch = Pick<PlacedItem, "x" | "y" | "width" | "height" | "rotation">;
+
+export interface OutfitCanvasProps {
   items: PlacedItem[];
-  onChangeTransform?: (id: string, patch: TransformPatch) => void;
-  onReorder?: (id: string, direction: "front" | "back") => void;
-  onRemove?: (id: string) => void;
-  /** Renders the canvas non-interactively: no dragging, no selection, no
-   *  Transformer handles, and no selection toolbar/helper text. Used by
-   *  read-only surfaces (e.g. Look detail) that only need to display a
-   *  saved arrangement. Defaults to false so the Outfit Builder's existing
-   *  fully-interactive usage is unaffected. */
+  selectedId: string | null;
+  onSelect(id: string | null): void;
+  onChangeTransform(id: string, patch: TransformPatch): void;
+  onReorder(id: string, direction: "front" | "back"): void;
+  onCopy(id: string): void;
+  onRemove(id: string): void;
+  /** Renders non-interactively: no dragging, selection, Transformer or
+   *  toolbar, and the page may scroll over it (used by Look detail). */
   readOnly?: boolean;
+  /** Pixels at the bottom of the stage covered by the page's picker sheet. */
+  visibleBottomInset?: number;
+  /** Receives the logical-space rect visible above `visibleBottomInset`
+   *  (clamped into the 400x711 space) — `placeItem`'s `visible` argument.
+   *  Recomputed whenever the stage size or the inset changes. */
+  onVisibleRectChange?(rect: LogicalRect): void;
+}
+
+interface StageLayout {
+  width: number;
+  height: number;
+  scale: number;
+  offsetX: number;
+  offsetY: number;
 }
 
 /** Loads a same-origin image URL into an HTMLImageElement for Konva to draw,
@@ -66,32 +86,50 @@ function useHtmlImage(src?: string) {
   return image;
 }
 
+/** Logical rect visible above the bottom inset, clamped into the design space. */
+function visibleLogicalRect(layout: StageLayout, bottomInset: number): LogicalRect {
+  const { width, height, scale, offsetX, offsetY } = layout;
+  const toLogicalX = (px: number) => Math.min(DESIGN_WIDTH, Math.max(0, (px - offsetX) / scale));
+  const toLogicalY = (px: number) => Math.min(DESIGN_HEIGHT, Math.max(0, (px - offsetY) / scale));
+  const left = toLogicalX(0);
+  const right = toLogicalX(width);
+  const top = toLogicalY(0);
+  const bottom = Math.max(top, toLogicalY(height - Math.max(0, bottomInset)));
+  return { x: left, y: top, width: right - left, height: bottom - top };
+}
+
 interface PlacedNodeProps {
   item: PlacedItem;
   isSelected: boolean;
   readOnly: boolean;
+  layout: StageLayout;
   onSelect: () => void;
   onChangeTransform: (patch: TransformPatch) => void;
   registerRef: (node: Konva.Image | Konva.Rect | null) => void;
 }
 
 /** One placed piece on the canvas. Konva's default rotation pivot is a
- *  node's (x, y) anchor (top-left); `LookCard.tsx` assumes (x, y) is the
+ *  node's (x, y) anchor (top-left); the stored contract is that (x, y) is the
  *  *unrotated top-left* corner with rotation pivoting around the box's
- *  *center* (CSS default transform-origin). To match that contract, the
- *  Konva node's real x/y is set to the box's center and offsetX/offsetY to
- *  half width/height, so Konva also pivots around center — while the value
- *  we store/emit (`item.x`, `item.y`) stays the unrotated top-left corner,
- *  converted back out of the node's center coordinates on every change. */
-function PlacedNode({ item, isSelected, readOnly, onSelect, onChangeTransform, registerRef }: PlacedNodeProps) {
+ *  *centre*. To match it, the Konva node's real x/y is the box's centre and
+ *  offsetX/offsetY are half width/height, so Konva also pivots around the
+ *  centre — while the value we store/emit (`item.x`, `item.y`) stays the
+ *  unrotated top-left corner, converted back from the node's centre on every
+ *  change. */
+function PlacedNode({
+  item,
+  isSelected,
+  readOnly,
+  layout,
+  onSelect,
+  onChangeTransform,
+  registerRef,
+}: PlacedNodeProps) {
   const image = useHtmlImage(item.cutoutURL ?? item.imageURL);
 
   // Latest item / callback, read (not depended on) by the image-load fit
-  // effect below — the effect must only re-run when a *new* image object
-  // finishes loading (a fresh placement's photo, or a cutout swapping in
-  // later), never on every drag/resize/reorder that changes `item` without
-  // touching its `src`. Refs give the effect a stable trigger (`image`
-  // identity) while still reading current values when it does fire.
+  // effect below — it must only re-run when a *new* image object finishes
+  // loading, never on every drag/resize/reorder that changes `item`.
   const itemRef = useRef(item);
   itemRef.current = item;
   const onChangeTransformRef = useRef(onChangeTransform);
@@ -99,9 +137,7 @@ function PlacedNode({ item, isSelected, readOnly, onSelect, onChangeTransform, r
 
   // T4: fit a placement to its image's real aspect ratio once that image
   // loads, so a non-square photo or cutout doesn't render stretched into the
-  // fixed DEFAULT_SIZE square. Applies uniformly to a fresh photo placement,
-  // a cutout swapping in later, and an item that already had a cutoutURL at
-  // add time (which only ever fires this effect once, for that one image).
+  // DEFAULT_SIZE square.
   useEffect(() => {
     if (readOnly || !image) return;
     const naturalWidth = image.naturalWidth;
@@ -109,31 +145,19 @@ function PlacedNode({ item, isSelected, readOnly, onSelect, onChangeTransform, r
     if (!naturalWidth || !naturalHeight) return;
 
     const current = itemRef.current;
-    // Only reshape a placement still at its untouched default footprint —
-    // the cheap, stateless "the user hasn't resized/rotated/dragged this
-    // yet" check. Once it's been resized (by the user, or by an earlier run
-    // of this very effect), width/height no longer both equal DEFAULT_SIZE,
-    // so this becomes a permanent no-op for that placement — including if a
-    // cutout swaps in mid-interaction while the user is dragging it.
+    // Only reshape a placement still at its untouched default footprint;
+    // once resized (by the user or an earlier run of this effect) this is a
+    // permanent no-op for that placement.
     if (current.width !== DEFAULT_SIZE || current.height !== DEFAULT_SIZE) return;
 
-    // Reshape around the existing footprint: keep the longest side (== the
-    // untouched DEFAULT_SIZE here, since width/height are equal) and derive
-    // the other side from the image's aspect ratio, rather than growing or
-    // shrinking the piece's overall size.
     const longestSide = Math.max(current.width, current.height);
     const aspect = naturalWidth / naturalHeight;
     const width = aspect >= 1 ? longestSide : longestSide * aspect;
     const height = aspect >= 1 ? longestSide / aspect : longestSide;
 
-    // No-op guard for a square (or near-square) image: avoids emitting an
-    // identical transform (e.g. a cutout swapping in with essentially the
-    // same aspect ratio as the photo it was generated from, which already
-    // triggered this same fit once).
     if (Math.abs(width - current.width) < 0.5 && Math.abs(height - current.height) < 0.5) return;
 
-    // Preserve the center point so the piece doesn't visually jump position
-    // when it reshapes to its real aspect ratio.
+    // Preserve the centre so the piece doesn't jump when it reshapes.
     const centerX = current.x + current.width / 2;
     const centerY = current.y + current.height / 2;
     onChangeTransformRef.current({
@@ -143,14 +167,43 @@ function PlacedNode({ item, isSelected, readOnly, onSelect, onChangeTransform, r
       height,
       rotation: current.rotation,
     });
-    // Deliberately keyed only on `image` (a new object each time a new src
-    // finishes loading) and `readOnly` — see the comment above the refs.
+    // Deliberately keyed only on `image` and `readOnly` — see the refs above.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [image, readOnly]);
 
+  /** Clamp a logical placement into the design space, move the node to the
+   *  clamped centre (so it never lingers outside even if the resulting props
+   *  equal the previous ones and React skips the update), and emit it. */
+  const commitClamped = (node: Konva.Node, placement: TransformPatch) => {
+    const clamped = clampItem(placement);
+    node.position({ x: clamped.x + clamped.width / 2, y: clamped.y + clamped.height / 2 });
+    onChangeTransform(clamped);
+  };
+
+  // Keep the item inside the design space while it is being dragged. Konva
+  // passes/expects the node's absolute position (its centre, because of the
+  // centre offset), i.e. logical centre * scale + stage offset.
+  const dragBoundFunc = (pos: { x: number; y: number }) => {
+    const { scale, offsetX, offsetY } = layout;
+    if (scale <= 0) return pos;
+    const centerX = (pos.x - offsetX) / scale;
+    const centerY = (pos.y - offsetY) / scale;
+    const clamped = clampItem({
+      x: centerX - item.width / 2,
+      y: centerY - item.height / 2,
+      width: item.width,
+      height: item.height,
+      rotation: item.rotation,
+    });
+    return {
+      x: (clamped.x + item.width / 2) * scale + offsetX,
+      y: (clamped.y + item.height / 2) * scale + offsetY,
+    };
+  };
+
   const handleDragEnd = (event: Konva.KonvaEventObject<DragEvent>) => {
     const node = event.target;
-    onChangeTransform({
+    commitClamped(node, {
       x: node.x() - item.width / 2,
       y: node.y() - item.height / 2,
       width: item.width,
@@ -161,13 +214,15 @@ function PlacedNode({ item, isSelected, readOnly, onSelect, onChangeTransform, r
 
   const handleTransformEnd = (event: Konva.KonvaEventObject<Event>) => {
     const node = event.target;
-    const scaleX = node.scaleX();
-    const scaleY = node.scaleY();
-    const width = Math.max(MIN_SIZE, item.width * scaleX);
-    const height = Math.max(MIN_SIZE, item.height * scaleY);
+    const width = Math.max(MIN_SIZE, item.width * node.scaleX());
+    const height = Math.max(MIN_SIZE, item.height * node.scaleY());
     node.scaleX(1);
     node.scaleY(1);
-    onChangeTransform({
+    // Bake the scale into the node's size so it stays consistent (centre
+    // pivot intact) before React re-renders it with the new props.
+    node.size({ width, height });
+    node.offset({ x: width / 2, y: height / 2 });
+    commitClamped(node, {
       x: node.x() - width / 2,
       y: node.y() - height / 2,
       width,
@@ -190,6 +245,8 @@ function PlacedNode({ item, isSelected, readOnly, onSelect, onChangeTransform, r
     strokeWidth: !readOnly && isSelected ? 2 : 0,
     onClick: readOnly ? undefined : onSelect,
     onTap: readOnly ? undefined : onSelect,
+    onDragStart: readOnly ? undefined : onSelect,
+    dragBoundFunc: readOnly ? undefined : dragBoundFunc,
     onDragEnd: readOnly ? undefined : handleDragEnd,
     onTransformEnd: readOnly ? undefined : handleTransformEnd,
   };
@@ -200,30 +257,47 @@ function PlacedNode({ item, isSelected, readOnly, onSelect, onChangeTransform, r
   return <Rect ref={registerRef} fill={item.iconBg} {...shared} />;
 }
 
-/** Freeform arrange-and-drag canvas for the Outfit Builder: a controlled
- *  Konva surface over the placed-items array owned by `OutfitBuilderPage`.
- *  Renders items in `zIndex` order, supports select/deselect, drag, corner
- *  resize + rotate (via Konva's `Transformer`), a bring-to-front/send-back
- *  layering control, and removing the selected piece. Touch drag/resize
- *  works via Konva's built-in pointer handling — no extra wiring needed. */
+const TOOLBAR_BUTTON =
+  "flex h-8 w-8 items-center justify-center rounded-full text-cute-text-muted transition hover:bg-cute-surface-alt hover:text-cute-text";
+
+/** Fixed full-screen arrange canvas for the Outfit Builder: a controlled
+ *  Konva surface over the placed items and selection owned by the page.
+ *  The Stage fills its container; the 400x711 logical space is fitted into
+ *  it with `fitToScreen`. Items are selected by tap, moved by one-finger /
+ *  mouse drag, and resized/rotated with the Transformer handles of the
+ *  selected item; every move is clamped into the logical space. There is
+ *  deliberately no wheel, pinch-to-pan or drag-on-empty-space handling:
+ *  dragging empty space does nothing (and `touch-action: none` stops it
+ *  scrolling the page); tapping empty space deselects. */
 export function OutfitCanvas({
   items,
-  onChangeTransform = () => {},
-  onReorder = () => {},
-  onRemove = () => {},
+  selectedId,
+  onSelect,
+  onChangeTransform,
+  onReorder,
+  onCopy,
+  onRemove,
   readOnly = false,
+  visibleBottomInset = 0,
+  onVisibleRectChange,
 }: OutfitCanvasProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const trRef = useRef<Konva.Transformer>(null);
   const nodeRefs = useRef(new Map<string, Konva.Image | Konva.Rect>());
-  const [stageSize, setStageSize] = useState({ width: DESIGN_WIDTH, height: DESIGN_HEIGHT });
-  const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [stageSize, setStageSize] = useState({ width: 0, height: 0 });
 
+  // The container is always mounted (even with no items) so it can be
+  // measured on first render and the visible rect reported before the first
+  // item is placed.
   useLayoutEffect(() => {
     const el = containerRef.current;
     if (!el) return;
     const update = (width: number, height: number) => {
-      if (width > 0 && height > 0) setStageSize({ width, height });
+      if (width > 0 && height > 0) {
+        setStageSize((prev) =>
+          prev.width === width && prev.height === height ? prev : { width, height },
+        );
+      }
     };
     update(el.clientWidth, el.clientHeight);
     const observer = new ResizeObserver((entries) => {
@@ -235,74 +309,69 @@ export function OutfitCanvas({
     return () => observer.disconnect();
   }, []);
 
+  const fit = fitToScreen(stageSize);
+  const layout: StageLayout = { ...stageSize, ...fit };
+  const isMeasured = stageSize.width > 0 && stageSize.height > 0 && fit.scale > 0;
+
+  const onVisibleRectChangeRef = useRef(onVisibleRectChange);
+  onVisibleRectChangeRef.current = onVisibleRectChange;
   useEffect(() => {
-    if (selectedId !== null && !items.some((item) => item.id === selectedId)) {
-      setSelectedId(null);
-    }
-  }, [items, selectedId]);
+    if (!isMeasured) return;
+    onVisibleRectChangeRef.current?.(
+      visibleLogicalRect(
+        { ...stageSize, ...fitToScreen(stageSize) },
+        visibleBottomInset,
+      ),
+    );
+  }, [isMeasured, stageSize, visibleBottomInset]);
+
+  const selectedItem =
+    selectedId !== null ? (items.find((item) => item.id === selectedId) ?? null) : null;
 
   useEffect(() => {
     const transformer = trRef.current;
     if (!transformer) return;
-    const node = selectedId !== null ? nodeRefs.current.get(selectedId) : undefined;
+    const node = selectedItem ? nodeRefs.current.get(selectedItem.id) : undefined;
     transformer.nodes(node ? [node] : []);
     transformer.getLayer()?.batchDraw();
-  }, [selectedId, items]);
+  }, [selectedItem, items, readOnly]);
 
-  const scale = stageSize.width / DESIGN_WIDTH;
-
-  const handleStagePointerDown = (
-    event: Konva.KonvaEventObject<MouseEvent | TouchEvent>,
-  ) => {
-    if (event.target === event.target.getStage()) {
-      setSelectedId(null);
-    }
+  const handleStagePointerDown = (event: Konva.KonvaEventObject<MouseEvent | TouchEvent>) => {
+    // Tap/click on empty space (the Stage itself, not a shape) deselects.
+    if (event.target === event.target.getStage()) onSelect(null);
   };
 
   const ordered = [...items].sort((a, b) => a.zIndex - b.zIndex);
-
-  const selectedItem = selectedId !== null ? items.find((item) => item.id === selectedId) ?? null : null;
   const isEmpty = items.length === 0;
 
   return (
-    <div className="flex w-full flex-col gap-2">
-      {/* Always mounted (even when empty) so `containerRef` attaches on
-       *  first render and the ResizeObserver below can measure it — if this
-       *  div only rendered once an item existed, the effect that wires up
-       *  the observer (which only runs once, on mount) would find a null
-       *  ref every time, and the Stage would stay locked at its default
-       *  DESIGN_WIDTH/HEIGHT size forever regardless of container size. */}
-      <div
-        ref={containerRef}
-        className="relative aspect-[4/5] w-full overflow-hidden rounded-cute-l border border-cute-border bg-cute-surface"
-        style={{ touchAction: "none" }}
-      >
-        {isEmpty ? (
-          <div className="flex h-full w-full flex-col items-center justify-center gap-2 p-6 text-center">
-            <Shirt size={36} className="text-cute-text-muted" />
-            <p className="font-body text-sm text-cute-text-muted">
-              {readOnly
-                ? "No pieces in this look."
-                : "Add pieces from the picker to start building your look."}
-            </p>
-          </div>
-        ) : (
+    <div
+      ref={containerRef}
+      className="relative h-full w-full overflow-hidden bg-cute-bg"
+      style={{ ...DOTTED_BACKGROUND, touchAction: readOnly ? "auto" : "none" }}
+      data-testid="outfit-canvas"
+    >
+      {isMeasured && (
         <Stage
           width={stageSize.width}
           height={stageSize.height}
-          scaleX={scale}
-          scaleY={scale}
-          onMouseDown={handleStagePointerDown}
-          onTouchStart={handleStagePointerDown}
+          x={fit.offsetX}
+          y={fit.offsetY}
+          scaleX={fit.scale}
+          scaleY={fit.scale}
+          listening={!readOnly}
+          onMouseDown={readOnly ? undefined : handleStagePointerDown}
+          onTouchStart={readOnly ? undefined : handleStagePointerDown}
         >
-          <Layer>
+          <Layer listening={!readOnly}>
             {ordered.map((item) => (
               <PlacedNode
                 key={item.id}
                 item={item}
                 isSelected={selectedId === item.id}
                 readOnly={readOnly}
-                onSelect={() => setSelectedId(item.id)}
+                layout={layout}
+                onSelect={() => onSelect(item.id)}
                 onChangeTransform={(patch) => onChangeTransform(item.id, patch)}
                 registerRef={(node) => {
                   if (node) nodeRefs.current.set(item.id, node);
@@ -315,11 +384,9 @@ export function OutfitCanvas({
                 ref={trRef}
                 rotateEnabled
                 enabledAnchors={["top-left", "top-right", "bottom-left", "bottom-right"]}
-                // Default rotate-handle offset (50) can land above the visible
-                // stage for pieces placed near the top edge (e.g. a freshly
-                // added item's default spawn position), making the handle
-                // unreachable; a smaller offset keeps it reachable while still
-                // clear of the corner-resize anchors.
+                // Default rotate-handle offset (50) can land off-stage for
+                // pieces near the top edge; a smaller offset keeps it
+                // reachable while clear of the corner anchors.
                 rotateAnchorOffset={16}
                 boundBoxFunc={(oldBox, newBox) =>
                   newBox.width < MIN_SIZE || newBox.height < MIN_SIZE ? oldBox : newBox
@@ -328,37 +395,60 @@ export function OutfitCanvas({
             )}
           </Layer>
         </Stage>
-        )}
-      </div>
+      )}
 
-      {!readOnly && !isEmpty && (selectedItem && selectedId !== null ? (
-        <div className="flex w-full items-center justify-between gap-2 rounded-full border border-cute-border bg-cute-surface py-1.5 pr-1.5 pl-3">
+      {isEmpty && (
+        <div
+          className="pointer-events-none absolute inset-x-0 top-0 flex flex-col items-center justify-center gap-2 p-6 text-center"
+          style={{ bottom: Math.max(0, visibleBottomInset) }}
+        >
+          <Shirt size={36} className="text-cute-text-muted" />
+          <p className="font-body text-sm text-cute-text-muted">
+            {readOnly
+              ? "No pieces in this look."
+              : "Add pieces from the picker to start building your look."}
+          </p>
+        </div>
+      )}
+
+      {!readOnly && selectedItem && (
+        <div
+          className="absolute left-1/2 flex max-w-[calc(100%-1.5rem)] -translate-x-1/2 items-center gap-2 rounded-full border border-cute-border bg-cute-surface py-1.5 pr-1.5 pl-3 shadow-sm"
+          style={{ bottom: Math.max(0, visibleBottomInset) + 12 }}
+          role="toolbar"
+          aria-label={`${selectedItem.name} actions`}
+        >
           <span className="truncate font-body text-xs font-medium text-cute-text">
             {selectedItem.name}
           </span>
           <div className="flex shrink-0 items-center gap-1">
             <button
               type="button"
-              onClick={() => onReorder(selectedId, "back")}
+              onClick={() => onReorder(selectedItem.id, "back")}
               aria-label="Send backward"
-              className="flex h-8 w-8 items-center justify-center rounded-full text-cute-text-muted transition hover:bg-cute-surface-alt hover:text-cute-text"
+              className={TOOLBAR_BUTTON}
             >
               <ArrowDownToLine size={15} />
             </button>
             <button
               type="button"
-              onClick={() => onReorder(selectedId, "front")}
+              onClick={() => onReorder(selectedItem.id, "front")}
               aria-label="Bring to front"
-              className="flex h-8 w-8 items-center justify-center rounded-full text-cute-text-muted transition hover:bg-cute-surface-alt hover:text-cute-text"
+              className={TOOLBAR_BUTTON}
             >
               <ArrowUpToLine size={15} />
             </button>
             <button
               type="button"
-              onClick={() => {
-                onRemove(selectedId);
-                setSelectedId(null);
-              }}
+              onClick={() => onCopy(selectedItem.id)}
+              aria-label={`Copy ${selectedItem.name}`}
+              className={TOOLBAR_BUTTON}
+            >
+              <Copy size={15} />
+            </button>
+            <button
+              type="button"
+              onClick={() => onRemove(selectedItem.id)}
               aria-label={`Remove ${selectedItem.name}`}
               className="flex h-8 w-8 items-center justify-center rounded-full text-cute-text-muted transition hover:bg-cute-danger/10 hover:text-cute-danger"
             >
@@ -366,11 +456,7 @@ export function OutfitCanvas({
             </button>
           </div>
         </div>
-      ) : (
-        <p className="font-body text-xs text-cute-text-muted">
-          Tap a piece to select it, then drag, resize, or rotate with the handles.
-        </p>
-      ))}
+      )}
     </div>
   );
 }

@@ -90,3 +90,33 @@ export function lookBounds(items: Rect[], padding = 0): Rect {
     height: maxY - minY + 2 * padding,
   };
 }
+
+/** Like `lookBounds` but accounts for rotation (degrees, about each item's
+ *  centre): union of the rotated bounding boxes grown by `padding`; zero rect
+ *  if empty. */
+export function rotatedBounds(items: Placement[], padding = 0): Rect {
+  if (items.length === 0) return { x: 0, y: 0, width: 0, height: 0 };
+  let minX = Infinity;
+  let minY = Infinity;
+  let maxX = -Infinity;
+  let maxY = -Infinity;
+  for (const item of items) {
+    const rad = (item.rotation * Math.PI) / 180;
+    const cos = Math.abs(Math.cos(rad));
+    const sin = Math.abs(Math.sin(rad));
+    const halfW = (item.width * cos + item.height * sin) / 2;
+    const halfH = (item.width * sin + item.height * cos) / 2;
+    const cx = item.x + item.width / 2;
+    const cy = item.y + item.height / 2;
+    minX = Math.min(minX, cx - halfW);
+    minY = Math.min(minY, cy - halfH);
+    maxX = Math.max(maxX, cx + halfW);
+    maxY = Math.max(maxY, cy + halfH);
+  }
+  return {
+    x: minX - padding,
+    y: minY - padding,
+    width: maxX - minX + 2 * padding,
+    height: maxY - minY + 2 * padding,
+  };
+}

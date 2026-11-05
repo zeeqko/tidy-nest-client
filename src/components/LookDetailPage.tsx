@@ -8,7 +8,7 @@ import { useLook } from "../hooks/useLook";
 import { deleteLook } from "../api/looks";
 import { refreshLooksBounded } from "../hooks/useLooks";
 import { toPlacedItems } from "../lib/lookPlacements";
-import { lookBounds } from "../lib/canvasSpace";
+import { rotatedBounds } from "../lib/canvasSpace";
 
 // The read-only canvas never calls these; stable module-level no-ops.
 const noop = () => {};
@@ -95,9 +95,9 @@ export function LookDetailPage() {
 
   const pieceCount = look.items.length;
   const placedItems = toPlacedItems(look.items);
-  // Crop to the pieces' bounding box (+24 padding). An empty look has no
+  // Crop to the pieces' rotated bounding box (+24 padding). An empty look has no
   // bounds, so keep the previous 4:5 frame to hold the empty-state message.
-  const viewRect = lookBounds(placedItems, 24);
+  const viewRect = rotatedBounds(placedItems, 24);
   const hasView = placedItems.length > 0 && viewRect.width > 0 && viewRect.height > 0;
 
   return (

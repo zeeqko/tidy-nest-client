@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { clampItem, fitRectToScreen, fitToScreen, lookBounds } from "./canvasSpace";
+import { clampItem, fitRectToScreen, fitToScreen, lookBounds, rotatedBounds } from "./canvasSpace";
 
 describe("fitToScreen", () => {
   it("fits a phone viewport by width", () => {
@@ -131,6 +131,70 @@ describe("fitRectToScreen", () => {
   });
 
   it("yields zero scale for a degenerate viewport", () => {
-    expect(fitRectToScreen({ width: -10, height: 500 }, rect).scale).toBe(0);
+    const r = fitRectToScreen({ width: -10, height: 500 }, rect);
+    expect(r.scale).toBe(0);
+    expect(r.offsetX).toBeCloseTo(-5);
+    expect(r.offsetY).toBeCloseTo(250);
+  });
+
+  it("equals fitToScreen for the whole-space rect", () => {
+    const vp = { width: 390, height: 844 };
+    expect(fitRectToScreen(vp, { x: 0, y: 0, width: 400, height: 711 })).toEqual(fitToScreen(vp));
+  });
+});
+
+describe("rotatedBounds", () => {
+  const p = (x: number, y: number, width: number, height: number, rotation: number) => ({
+    x, y, width, height, rotation,
+  });
+
+  it("equals lookBounds at rotation 0", () => {
+    const items = [p(10, 20, 100, 40, 0), p(200, 300, 50, 80, 0)];
+    expect(rotatedBounds(items, 24)).toEqual(lookBounds(items, 24));
+  });
+
+  it("swaps extents at 90deg", () => {
+    // centred at (0,0): x=-50, y=-20
+    const r = rotatedBounds([p(-50, -20, 100, 40, 90)]);
+    expect(r.x).toBeCloseTo(-20);
+    expect(r.y).toBeCloseTo(-50);
+    expect(r.width).toBeCloseTo(40);
+    expect(r.height).toBeCloseTo(100);
+  });
+
+  it("uses the diagonal at 45deg", () => {
+    const r = rotatedBounds([p(-50, -50, 100, 100, 45)]);
+    expect(r.x).toBeCloseTo(-70.71, 2);
+    expect(r.y).toBeCloseTo(-70.71, 2);
+    expect(r.width).toBeCloseTo(141.42, 2);
+  });
+
+  it("returns a zero rect for no items", () => {
+    expect(rotatedBounds([], 24)).toEqual({ x: 0, y: 0, width: 0, height: 0 });
+  });
+
+  it("applies padding on all sides", () => {
+    const r = rotatedBounds([p(10, 20, 100, 40, 0)], 5);
+    expect(r).toEqual({ x: 5, y: 15, width: 110, height: 50 });
+  });
+
+  it("unions rotated and unrotated items", () => {
+    const r = rotatedBounds([p(0, 0, 100, 100, 0), p(150, -50, 100, 40, 90)]);
+    // second: centre (200,-30), half extents 20 x 50 -> x 180..220, y -80..20
+    expect(r.x).toBeCloseTo(0);
+    expect(r.y).toBeCloseTo(-80);
+    expect(r.width).toBeCloseTo(220);
+    expect(r.height).toBeCloseTo(180);
+  });
+
+  it("is symmetric for negative rotation and 135deg on a square", () => {
+    const base = rotatedBounds([p(0, 0, 100, 100, 45)]);
+    for (const rot of [-45, 135]) {
+      const r = rotatedBounds([p(0, 0, 100, 100, rot)]);
+      expect(r.x).toBeCloseTo(base.x);
+      expect(r.y).toBeCloseTo(base.y);
+      expect(r.width).toBeCloseTo(base.width);
+      expect(r.height).toBeCloseTo(base.height);
+    }
   });
 });

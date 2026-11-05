@@ -184,6 +184,12 @@ test.describe("save sheet", () => {
         expect(item[key], `item ${i} ${key}`).toBeCloseTo(nodes[i][key], 6);
       }
     });
+
+    // The create replaced the builder's history entry: Back skips the
+    // (now empty) builder and returns to where the user came from.
+    await page.goBack();
+    await expect(page).not.toHaveURL(/\/stylebook\/create$/);
+    await expect(page).toHaveURL(/\/$/);
   });
 
   test("(e) edit: 'Save changes' updates the same look; 'Save as a new look' creates a copy and leaves the original", async ({
@@ -233,6 +239,11 @@ test.describe("save sheet", () => {
     await expect(page).toHaveURL(/\/stylebook\/(?!create$)[^/]+$/);
     const copyId = lookIdFromUrl(page);
     expect(copyId).not.toBe(original.id);
+    // Back from the copy skips the editor entry it replaced.
+    await page.goBack();
+    await expect(page).not.toHaveURL(/\/edit$/);
+    await page.goForward();
+    await expect(page).toHaveURL(new RegExp(`/stylebook/${copyId}$`));
 
     looks = await userApi.looks();
     expect(looks.map((l) => l.id).sort()).toEqual([original.id, copyId].sort());

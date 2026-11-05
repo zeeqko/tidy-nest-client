@@ -42,8 +42,16 @@ const PANELS_HEIGHT = [
   "supports-[height:100dvh]:h-[calc(100dvh_-_11.75rem_-_env(safe-area-inset-top)_-_env(safe-area-inset-bottom))]",
   "sm:h-[calc(100vh_-_13.25rem_-_env(safe-area-inset-top))]",
   "sm:supports-[height:100dvh]:h-[calc(100dvh_-_13.25rem_-_env(safe-area-inset-top))]",
-  "min-h-[24rem] lg:min-h-[30rem]",
+  "min-h-[27rem] lg:min-h-[30rem]",
 ].join(" ");
+
+/** Below `lg` the picker (stacked under the canvas) never gets shorter than
+ *  its controls (group tabs, search, chip row: ~8rem) plus one full tile row
+ *  (~6rem at phone widths) and the grid's bottom padding; the canvas panel
+ *  (`min-h-0`) absorbs the shortfall. With the 27rem panels floor the canvas
+ *  keeps at least ~10.75rem; below that the page scrolls instead (both
+ *  panels stay reachable). From `lg` the panels sit side by side. */
+const PICKER_MIN_HEIGHT = "min-h-[15.5rem] lg:min-h-0";
 
 const SAVE_PILL =
   "flex h-9 shrink-0 items-center justify-center rounded-full bg-cute-primary px-3 sm:px-4 font-body text-sm font-semibold text-cute-primary-foreground transition hover:brightness-105 aria-disabled:cursor-not-allowed aria-disabled:opacity-50 aria-disabled:hover:brightness-100";
@@ -361,7 +369,9 @@ export function OutfitBuilderPage() {
         const created = await createLook(payload);
         await refreshLooksBounded();
         if (!mountedRef.current) return;
-        navigate(`/stylebook/${created.id}`);
+        // Replace the builder entry so Back from the new look doesn't land on
+        // an empty /stylebook/create (or re-open the editor of the original).
+        navigate(`/stylebook/${created.id}`, { replace: true });
       }
     } catch (err) {
       if (!mountedRef.current) return;
@@ -510,7 +520,7 @@ export function OutfitBuilderPage() {
             </div>
           </div>
           <div
-            className="min-h-0 w-full flex-[2] lg:w-[28rem] lg:flex-none lg:shrink-0"
+            className={`w-full flex-[2] ${PICKER_MIN_HEIGHT} lg:w-[28rem] lg:flex-none lg:shrink-0`}
             data-testid="builder-picker-panel"
           >
             <StylebookPicker onAdd={addItem} onUndoLast={undoLast} countsByItemId={counts} />

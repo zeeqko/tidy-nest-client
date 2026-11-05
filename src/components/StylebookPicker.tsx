@@ -97,12 +97,16 @@ function Chip({
   onClick,
   variant = "solid",
   trailing,
+  expanded,
 }: {
   label: string;
   active: boolean;
   onClick(): void;
   variant?: "solid" | "tag";
   trailing?: ReactNode;
+  /** When set, the chip is a disclosure (`aria-expanded`) rather than a
+   *  toggle (`aria-pressed`). */
+  expanded?: boolean;
 }) {
   const inactive =
     variant === "tag"
@@ -112,7 +116,7 @@ function Chip({
     <button
       type="button"
       onClick={onClick}
-      aria-pressed={active}
+      {...(expanded === undefined ? { "aria-pressed": active } : { "aria-expanded": expanded })}
       className={`flex shrink-0 items-center gap-1 rounded-full px-3 py-1 font-body text-xs font-semibold whitespace-nowrap transition ${
         active ? "border border-cute-primary bg-cute-primary text-cute-primary-foreground" : inactive
       }`}
@@ -270,7 +274,7 @@ export function StylebookPicker({ onAdd, onUndoLast, countsByItemId }: Stylebook
               )}
 
               {(tagChips.length > 0 || tagCounts.length > 0) && (
-                <div className="flex shrink-0 items-center gap-1.5 lg:-mx-4 lg:overflow-x-auto lg:px-4 lg:pb-0.5">
+                <div className="flex shrink-0 items-center gap-1.5 lg:-mx-4 lg:flex-wrap lg:px-4 lg:pb-0.5">
                   <span className="shrink-0 pl-1 font-body text-[11px] font-bold text-cute-text-muted lg:pl-0">Tags</span>
                   {tagChips.map((t) => (
                     <Chip
@@ -286,6 +290,7 @@ export function StylebookPicker({ onAdd, onUndoLast, countsByItemId }: Stylebook
                     <Chip
                       label={moreTagsOpen ? "Fewer tags ‹" : "More tags ›"}
                       active={false}
+                      expanded={moreTagsOpen}
                       onClick={() => setMoreTagsOpen((open) => !open)}
                     />
                   )}

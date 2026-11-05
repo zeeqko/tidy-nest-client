@@ -125,6 +125,21 @@ export async function anchorPoint(page: Page, anchor: string, stageIndex = 0): P
   return point!;
 }
 
+/** The selected piece's Transformer: its `enabledAnchors()` and which corner
+ *  anchor nodes are actually visible (null when nothing is selected). */
+export async function transformerAnchors(page: Page, stageIndex = 0) {
+  return page.evaluate((index) => {
+    const tr = (window as any).Konva.stages[index].findOne("Transformer");
+    if (!tr || tr.nodes().length === 0) return null;
+    const corners = ["top-left", "top-right", "bottom-left", "bottom-right"];
+    return {
+      enabled: [...tr.enabledAnchors()].sort() as string[],
+      visibleCorners: corners.filter((name) => tr.findOne(`.${name}`)?.isVisible()).sort(),
+      rotater: Boolean(tr.findOne(".rotater")?.isVisible()),
+    };
+  }, stageIndex);
+}
+
 /** Each placed node's on-screen (stage-relative, scaled) client rect plus the stage size. */
 export async function nodeClientRects(page: Page, stageIndex = 0) {
   return page.evaluate((index) => {

@@ -480,7 +480,10 @@ export function OutfitCanvas({
               <Transformer
                 ref={trRef}
                 rotateEnabled
-                enabledAnchors={["top-left", "top-right", "bottom-left", "bottom-right"]}
+                // No top-right handle: that corner belongs to the remove ✕
+                // (its hit box covers it), so a handle there could only be
+                // tapped into a delete, never dragged.
+                enabledAnchors={["top-left", "bottom-left", "bottom-right"]}
                 anchorSize={ANCHOR_SIZE}
                 rotateAnchorOffset={ROTATE_ANCHOR_OFFSET}
                 onTransformStart={() => setGestureId(selectedId)}

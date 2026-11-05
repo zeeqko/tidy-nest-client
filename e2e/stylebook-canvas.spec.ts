@@ -42,6 +42,7 @@ import {
   selectionPill,
   stageTransform,
   touchScrollGesture,
+  transformerAnchors,
   type CanvasNode,
 } from "./support/canvas";
 
@@ -457,6 +458,33 @@ test.describe("fixed canvas", () => {
   });
 });
 
+test.describe("picker tag row", () => {
+  test("(b) desktop: the tag row wraps so 'More tags' stays on screen; it is a disclosure (aria-expanded)", async ({
+    authedPage: page,
+  }, testInfo) => {
+    test.skip(testInfo.project.name !== "desktop", "the wrapping tag row is the lg+ layout");
+    await openBuilder(page);
+    const more = picker(page).getByRole("button", { name: "More tags ›" });
+    await expect(more).toBeVisible();
+    await expect(more).toBeInViewport({ ratio: 1 });
+    const panel = (await pickerPanel(page).boundingBox())!;
+    const box = (await more.boundingBox())!;
+    expect(box.x + box.width, "More tags inside the picker panel").toBeLessThanOrEqual(panel.x + panel.width + 0.5);
+    // Every tag chip is inside the panel too (wrapped, not scrolled off).
+    for (const chip of await picker(page).getByRole("button", { name: /^#/ }).all()) {
+      const b = (await chip.boundingBox())!;
+      expect(b.x + b.width).toBeLessThanOrEqual(panel.x + panel.width + 0.5);
+    }
+    await expect(more).toHaveAttribute("aria-expanded", "false");
+    expect(await more.getAttribute("aria-pressed")).toBeNull();
+    await saveScreenshot(page, testInfo, "picker-tag-row", { target: pickerPanel(page) });
+    await more.click();
+    const fewer = picker(page).getByRole("button", { name: "Fewer tags ‹" });
+    await expect(fewer).toHaveAttribute("aria-expanded", "true");
+    await expect(picker(page).getByLabel("All tags")).toBeVisible();
+  });
+});
+
 test.describe("canvas toolbar", () => {
   test("(k) after Copy, the Transformer resizes the copy and leaves the original untouched", async ({ authedPage: page }, testInfo) => {
     test.skip(testInfo.project.name !== "desktop", "mouse-driven Transformer handle drag");
@@ -486,10 +514,54 @@ test.describe("canvas toolbar", () => {
     expect(after[1].width, "copy was resized").toBeLessThan(copy.width - 5);
     expectSameNodes([after[0]], [original]);
   });
+
+  test("(k) the ✕ owns the top-right corner: no resize handle there; the bottom-right handle still resizes", async ({
+    authedPage: page,
+  }, testInfo) => {
+    await openBuilder(page);
+    await addPiece(page, linen, 1);
+    await expect.poll(async () => (await canvasNodes(page))[0].hasImage).toBe(true);
+    await selectPiece(page, testInfo, 0);
+    // Three corner handles plus the rotate handle; nothing under the ✕.
+    expect(await transformerAnchors(page)).toEqual({
+      enabled: ["bottom-left", "bottom-right", "top-left"],
+      visibleCorners: ["bottom-left", "bottom-right", "top-left"],
+      rotater: true,
+    });
+    await expect(removeCross(page)).toBeVisible();
+    if (testInfo.project.name !== "desktop") return; // the drag below is mouse-driven
+
+    const [before] = await canvasNodes(page);
+    const handle = await anchorPoint(page, "bottom-right");
+    await mouseDrag(page, handle, { x: handle.x - 30, y: handle.y - 40 }, 10);
+    await page.waitForTimeout(300);
+    const [after] = await canvasNodes(page);
+    expect(after.width, "bottom-right drag shrank the width").toBeLessThan(before.width - 5);
+    expect(after.height, "bottom-right drag shrank the height").toBeLessThan(before.height - 5);
+    // The opposite (top-left) corner stayed put (to within the Transformer's
+    // sub-pixel rounding, ~0.2 logical units).
+    expect(Math.abs(after.x - before.x)).toBeLessThan(1);
+    expect(Math.abs(after.y - before.y)).toBeLessThan(1);
+    // Still selected, piece not deleted.
+    expect(await canvasNodes(page)).toHaveLength(1);
+  });
 });
 
 test.describe("docked layout", () => {
   type Box = { x: number; y: number; width: number; height: number };
+
+  /** At least one full tile row fits: the first tile lies entirely inside the
+   *  grid's scrollport, and the canvas panel keeps a usable height. */
+  async function expectOneTileRow(page: Page, label: string) {
+    const grid: Box = (await pickerScroller(page).boundingBox())!;
+    const tile: Box = (await pickerScroller(page).getByRole("button", { name: /^Add / }).first().boundingBox())!;
+    expect(tile.y, `${label}: first tile top inside the grid`).toBeGreaterThanOrEqual(grid.y - 0.5);
+    expect(tile.y + tile.height, `${label}: first tile bottom inside the grid`).toBeLessThanOrEqual(grid.y + grid.height + 0.5);
+    expect(tile.x).toBeGreaterThanOrEqual(grid.x - 0.5);
+    expect(tile.x + tile.width).toBeLessThanOrEqual(grid.x + grid.width + 0.5);
+    const canvas: Box = (await canvasPanel(page).boundingBox())!;
+    expect(canvas.height, `${label}: canvas panel keeps a usable height`).toBeGreaterThanOrEqual(150);
+  }
 
   /** Checks the canvas + picker panels at the current viewport size and saves a screenshot. */
   async function checkLayout(page: Page, testInfo: import("@playwright/test").TestInfo, label: string, phone: boolean) {
@@ -535,9 +607,14 @@ test.describe("docked layout", () => {
 
     if (phone) {
       expect(pick.y, `${label}: picker is below the canvas`).toBeGreaterThanOrEqual(canvas.y + canvas.height);
-      const ratio = canvas.height / pick.height;
-      expect(ratio, `${label}: canvas/picker height ratio ~60/40`).toBeGreaterThanOrEqual(1.1);
-      expect(ratio).toBeLessThanOrEqual(2.2);
+      await expectOneTileRow(page, label);
+      // Tall phones keep the ~60/40 split; on short ones the picker sits at
+      // its one-row floor and the canvas takes what's left.
+      if (viewport.height >= 800) {
+        const ratio = canvas.height / pick.height;
+        expect(ratio, `${label}: canvas/picker height ratio ~60/40`).toBeGreaterThanOrEqual(1.1);
+        expect(ratio).toBeLessThanOrEqual(2.2);
+      }
     } else {
       expect(pick.x, `${label}: picker is right of the canvas`).toBeGreaterThanOrEqual(canvas.x + canvas.width);
       expect(canvas.height, `${label}: canvas panel is tall`).toBeGreaterThanOrEqual(400);
@@ -608,6 +685,25 @@ test.describe("docked layout", () => {
       // Short phone.
       await page.setViewportSize({ width: 375, height: 667 });
       await checkLayout(page, testInfo, "phone-375x667", true);
+      // Shorter still (roughly iOS Safari's visible height with its bars):
+      // the panels' floor makes the page scroll a little, but a full tile row
+      // and a usable canvas remain, and the picker is fully reachable.
+      await page.setViewportSize({ width: 375, height: 553 });
+      await page.evaluate(() => window.scrollTo(0, 0));
+      await page.waitForTimeout(300);
+      await expectOneTileRow(page, "phone-375x553");
+      await saveScreenshot(page, testInfo, "e-layout-phone-375x553");
+      await page.evaluate(() => window.scrollTo(0, document.documentElement.scrollHeight));
+      await page.waitForTimeout(200);
+      const pickBox = (await pickerPanel(page).boundingBox())!;
+      const navTop = await page.evaluate(() => {
+        const nav = [...document.querySelectorAll("nav")].find((n) => getComputedStyle(n).position === "fixed");
+        return nav ? nav.getBoundingClientRect().top : window.innerHeight;
+      });
+      expect(pickBox.y, "phone-375x553: picker top on screen when scrolled").toBeGreaterThanOrEqual(0);
+      expect(pickBox.y + pickBox.height, "phone-375x553: picker fully above the bottom nav when scrolled").toBeLessThanOrEqual(navTop + 0.5);
+      await saveScreenshot(page, testInfo, "e-layout-phone-375x553-scrolled");
+      await page.evaluate(() => window.scrollTo(0, 0));
     } else {
       await checkLayout(page, testInfo, "desktop-1440x900", false);
       await selectPiece(page, testInfo, 1);

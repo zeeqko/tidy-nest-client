@@ -114,10 +114,17 @@ export const PEEK_HEIGHT = 96;
 /** How far ahead (ms) release velocity projects the sheet before picking a snap. */
 const VELOCITY_PROJECTION_MS = 150;
 
-export function snapHeights(viewportHeight: number): Record<SnapName, number> {
-  const half = Math.max(PEEK_HEIGHT, Math.round(viewportHeight * 0.5));
-  const full = Math.max(half, Math.round(viewportHeight * 0.9));
-  return { peek: PEEK_HEIGHT, half, full };
+/**
+ * Snap heights for a sheet inside a container `availableHeight` px tall (the
+ * picker's positioned parent; the viewport only before it is measured).
+ * Every snap fits inside the container, so the drag handle stays reachable.
+ */
+export function snapHeights(availableHeight: number): Record<SnapName, number> {
+  const available = Math.max(0, availableHeight);
+  const peek = Math.min(PEEK_HEIGHT, available);
+  const half = Math.max(peek, Math.round(available * 0.5));
+  const full = Math.max(half, Math.round(available * 0.9));
+  return { peek, half, full };
 }
 
 /**

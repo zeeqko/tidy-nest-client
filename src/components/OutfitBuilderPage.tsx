@@ -340,9 +340,11 @@ export function OutfitBuilderPage() {
 
         {/* Explicit height: the canvas is h-full and the picker sheet is
             absolute bottom-0 inside this box. Mobile subtracts the top bar
-            and the fixed bottom nav; desktop the brand bar and title row. */}
+            and the fixed bottom nav; desktop the brand bar and title row;
+            both leave ~4rem so the top of the list/footer below peeks into
+            view. `vh` is the fallback for browsers without `dvh`. */}
         <div
-          className="relative h-[calc(100dvh-11rem)] min-h-[28rem] w-full overflow-hidden rounded-cute-l border border-cute-border sm:h-[calc(100dvh-13rem)]"
+          className="relative h-[calc(100vh-15rem)] min-h-[28rem] w-full overflow-hidden rounded-cute-l border border-cute-border supports-[height:100dvh]:h-[calc(100dvh-15rem)] sm:h-[calc(100vh-17rem)] sm:supports-[height:100dvh]:h-[calc(100dvh-17rem)]"
           data-testid="builder-canvas-area"
         >
           <OutfitCanvas
@@ -369,6 +371,41 @@ export function OutfitBuilderPage() {
             onHeightChange={handlePickerHeightChange}
           />
         </div>
+
+        {/* Keyboard / screen-reader path for removing placements (the
+            canvas toolbar needs a pointer to select a piece first). */}
+        <section aria-labelledby="placed-pieces-heading" className="flex w-full flex-col gap-2">
+          <div className="flex items-center justify-between gap-2">
+            <h2
+              id="placed-pieces-heading"
+              className="font-heading text-sm font-semibold text-cute-text sm:text-base"
+            >
+              Placed pieces
+            </h2>
+            <p className="font-body text-xs text-cute-text-muted">
+              {state.items.length} {state.items.length === 1 ? "piece" : "pieces"}
+            </p>
+          </div>
+          {state.items.length > 0 && (
+            <ul className="flex flex-col divide-y divide-cute-border rounded-cute-m border border-cute-border bg-cute-surface">
+              {state.items.map((placed) => (
+                <li key={placed.id} className="flex items-center justify-between gap-3 py-2 pr-2 pl-4">
+                  <span className="min-w-0 truncate font-body text-sm text-cute-text">
+                    {placed.name}
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() => dispatch({ type: "remove", id: placed.id })}
+                    aria-label={`Remove ${placed.name}`}
+                    className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-cute-text-muted transition hover:bg-cute-danger/10 hover:text-cute-danger"
+                  >
+                    <X size={15} />
+                  </button>
+                </li>
+              ))}
+            </ul>
+          )}
+        </section>
 
         <div className="flex w-full flex-col gap-4 border-t border-cute-border pt-4 sm:pt-6">
           <div className="flex flex-col gap-1.5">

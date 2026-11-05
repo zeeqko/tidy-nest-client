@@ -114,6 +114,28 @@ describe("snapping", () => {
   it("computes peek/half/full", () => {
     expect(heights).toEqual({ peek: 96, half: 400, full: 720 });
   });
+  it("keeps the full snap within the container", () => {
+    for (const container of [668, 692, 450, 200]) {
+      expect(snapHeights(container).full).toBeLessThanOrEqual(container);
+    }
+  });
+  it("keeps half below full for real container sizes", () => {
+    for (const container of [668, 692, 450]) {
+      const h = snapHeights(container);
+      expect(h.half).toBeLessThan(h.full);
+    }
+  });
+  it("never makes peek taller than a tiny container", () => {
+    const h = snapHeights(60);
+    expect(h.peek).toBeLessThanOrEqual(60);
+    expect(h.half).toBeLessThanOrEqual(60);
+    expect(h.full).toBeLessThanOrEqual(60);
+    expect(snapHeights(0)).toEqual({ peek: 0, half: 0, full: 0 });
+  });
+  it("follows a changed container height", () => {
+    expect(snapHeights(668)).toEqual({ peek: 96, half: 334, full: 601 });
+    expect(snapHeights(500)).toEqual({ peek: 96, half: 250, full: 450 });
+  });
   it("never lets half/full drop below peek on tiny viewports", () => {
     const h = snapHeights(100);
     expect(h.half).toBeGreaterThanOrEqual(96);

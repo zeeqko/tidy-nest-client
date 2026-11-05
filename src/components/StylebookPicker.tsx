@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState, type KeyboardEvent, type PointerEvent, type ReactNode } from "react";
+import { useEffect, useLayoutEffect, useMemo, useRef, useState, type KeyboardEvent, type PointerEvent, type ReactNode } from "react";
 import { Check, FolderCog, PackageSearch, Search, X } from "lucide-react";
 import { EmptyState } from "./EmptyState";
 import { useCategories } from "../hooks/useCategories";
@@ -30,7 +30,7 @@ interface StylebookPickerProps {
   onUndoLast(itemId: string): void;
   /** How many copies of each item are on the canvas. */
   countsByItemId: Record<string, number>;
-  /** Current settled sheet height in px (also fired on mount and window resize). */
+  /** Current settled sheet height in px (also fired on mount and container resize). */
   onHeightChange?(px: number): void;
 }
 
@@ -151,10 +151,16 @@ export function StylebookPicker({ onAdd, onUndoLast, countsByItemId, onHeightCha
   const [moreTagsOpen, setMoreTagsOpen] = useState(false);
 
   // ---- Sheet height / snapping ----
+  // Snaps are sized from the positioned parent the sheet overlays (it is
+  // overflow-hidden in the builder, so a viewport-sized snap would clip the
+  // handle). The viewport height is only the fallback before it is measured.
+  const sectionRef = useRef<HTMLElement>(null);
   const [vh, setVh] = useState(viewportHeight);
+  const [containerHeight, setContainerHeight] = useState<number | null>(null);
   const [snap, setSnap] = useState<SnapName>("half");
   const [dragHeight, setDragHeight] = useState<number | null>(null);
-  const heights = useMemo(() => snapHeights(vh), [vh]);
+  const availableHeight = containerHeight ?? vh;
+  const heights = useMemo(() => snapHeights(availableHeight), [availableHeight]);
   const settledHeight = heights[snap];
   const height = dragHeight ?? settledHeight;
   const drag = useRef<{ startY: number; startHeight: number; lastY: number; lastT: number; velocity: number; moved: boolean } | null>(null);
@@ -165,8 +171,22 @@ export function StylebookPicker({ onAdd, onUndoLast, countsByItemId, onHeightCha
     return () => window.removeEventListener("resize", onResize);
   }, []);
 
-  // Fires on mount, on every snap change and on viewport resize (settledHeight
-  // depends on vh). Intermediate drag heights are not reported.
+  useLayoutEffect(() => {
+    const parent = sectionRef.current?.parentElement;
+    if (!parent) return;
+    const update = () => {
+      const h = parent.clientHeight;
+      if (h > 0) setContainerHeight((prev) => (prev === h ? prev : h));
+    };
+    update();
+    const observer = new ResizeObserver(update);
+    observer.observe(parent);
+    return () => observer.disconnect();
+  }, []);
+
+  // Fires on mount, on every snap change and whenever the container (or,
+  // before it is measured, the viewport) resizes, since settledHeight depends
+  // on availableHeight. Intermediate drag heights are not reported.
   useEffect(() => {
     onHeightChange?.(settledHeight);
   }, [settledHeight, onHeightChange]);
@@ -299,6 +319,7 @@ export function StylebookPicker({ onAdd, onUndoLast, countsByItemId, onHeightCha
 
   return (
     <section
+      ref={sectionRef}
       aria-label="Add pieces"
       className={`absolute inset-x-0 bottom-0 z-30 flex flex-col overflow-hidden rounded-t-[24px] border border-b-0 border-cute-border bg-cute-surface shadow-[0_-8px_24px_rgba(74,53,56,0.12)] ${
         dragHeight === null ? "transition-[height] duration-200 ease-out" : ""

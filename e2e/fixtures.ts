@@ -94,6 +94,9 @@ export function api(request: APIRequestContext) {
       ),
     createItem: async (data: Record<string, unknown>) =>
       json<ApiItem>(await request.post("/api/inventory/", { data: { quantity: 1, location: "", ...data } }), 201),
+    item: async (id: string) => json<ApiItem>(await request.get(`/api/inventory/${id}`), 200),
+    createLook: async (data: { name: string; occasion?: string; items: Omit<ApiLookItem, "name" | "imageURL" | "cutoutURL">[] }) =>
+      json<ApiLook>(await request.post("/api/looks/", { data }), 201),
     looks: async () => json<ApiLook[]>(await request.get("/api/looks/"), 200),
     look: async (id: string) => json<ApiLook>(await request.get(`/api/looks/${id}`), 200),
   };
@@ -177,6 +180,20 @@ export async function seedCloset(a: Api): Promise<Closet> {
     items[spec.name] = { ...created, group: spec.group };
   }
   return { items, photoURL, tags };
+}
+
+/**
+ * Seeds one Clothes/Tops item WITH a photo but WITHOUT a cutout (its own
+ * uploaded PNG, a different colour from the closet's), so the builder queues
+ * it for background removal. Only for tests that stub the removal worker
+ * (see support/fakeCutoutWorker.ts): the real one needs a CDN-hosted model.
+ */
+export async function seedPhotoOnlyItem(a: Api, name: string): Promise<ApiItem & { photoURL: string }> {
+  const { url: photoURL } = await a.upload(makePng(60, 90, [90, 110, 200]), "photo-only.png");
+  const created = await a.createItem({ name, category: "Clothes", subcategory: "Tops", tags: [], imageURL: photoURL });
+  expect(created.imageURL).toBe(photoURL);
+  expect(created.cutoutURL ?? "", "seeded without a cutout").toBe("");
+  return { ...created, photoURL };
 }
 
 type Fixtures = {

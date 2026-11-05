@@ -187,9 +187,96 @@ describe("editorReducer", () => {
       { type: "remove", id: "a" },
       { type: "select", id: "a" },
       { type: "load", items: [] },
+      { type: "cutout", itemId: "item-a", cutoutURL: "/cut-a.png" },
       { type: "undo" },
       { type: "redo" },
     ];
     for (const a of actions) expect(() => editorReducer(frozen, a)).not.toThrow();
+  });
+
+  describe("cutout", () => {
+    const cut = (itemId: string, cutoutURL = "/cut.png"): EditorAction => ({ type: "cutout", itemId, cutoutURL });
+
+    it("swaps every placement of the item (duplicates too) in place, leaving other items untouched", () => {
+      const a1 = mk("a1", { itemId: "x", imageURL: "/photo.jpg", x: 10, rotation: 30, zIndex: 4 });
+      const a2 = mk("a2", { itemId: "x", imageURL: "/photo.jpg", y: 300 });
+      const b = mk("b", { itemId: "y", imageURL: "/b.jpg" });
+      const s = editorReducer(initialEditorState([a1, b, a2]), { type: "select", id: "b" });
+      const n = editorReducer(s, cut("x"));
+      expect(n.items.map((i) => i.cutoutURL)).toEqual(["/cut.png", undefined, "/cut.png"]);
+      expect(n.items[0]).toEqual({ ...a1, cutoutURL: "/cut.png" });
+      expect(n.items[2]).toEqual({ ...a2, cutoutURL: "/cut.png" });
+      expect(n.items[1]).toBe(b);
+      expect(n.selectedId).toBe("b");
+    });
+
+    it("pushes no history and keeps the redo stack", () => {
+      let s = initialEditorState();
+      s = editorReducer(s, { type: "add", item: mk("a", { itemId: "x" }) });
+      s = editorReducer(s, { type: "add", item: mk("b", { itemId: "y" }) });
+      s = editorReducer(s, { type: "undo" });
+      const n = editorReducer(s, cut("x"));
+      expect(n.past).toHaveLength(s.past.length);
+      expect(n.future).toHaveLength(1);
+      expect(n.future[0].map((i) => i.id)).toEqual(["a", "b"]);
+    });
+
+    it("patches past and future snapshots so undo and redo keep the cutout", () => {
+      let s = initialEditorState();
+      s = editorReducer(s, { type: "add", item: mk("a", { itemId: "x" }) });
+      s = editorReducer(s, { type: "update", id: "a", patch: { x: 150 } });
+      s = editorReducer(s, { type: "update", id: "a", patch: { x: 200 } });
+      s = editorReducer(s, { type: "undo" }); // a at 150, future has a at 200
+      s = editorReducer(s, cut("x"));
+      expect(s.items[0].cutoutURL).toBe("/cut.png");
+      expect(s.past.flat().every((i) => i.cutoutURL === "/cut.png")).toBe(true);
+      expect(s.future.flat().every((i) => i.cutoutURL === "/cut.png")).toBe(true);
+
+      const undone = editorReducer(s, { type: "undo" });
+      expect(undone.items[0]).toMatchObject({ x: 100, cutoutURL: "/cut.png" });
+      const redone = editorReducer(editorReducer(s, { type: "redo" }), { type: "undo" });
+      expect(redone.items[0]).toMatchObject({ x: 150, cutoutURL: "/cut.png" });
+      expect(editorReducer(s, { type: "redo" }).items[0]).toMatchObject({ x: 200, cutoutURL: "/cut.png" });
+    });
+
+    it("patches a placement that only exists in history (removed, then restored by undo)", () => {
+      let s = initialEditorState([mk("a", { itemId: "x" })]);
+      s = editorReducer(s, { type: "remove", id: "a" });
+      s = editorReducer(s, cut("x"));
+      expect(s.items).toHaveLength(0);
+      s = editorReducer(s, { type: "undo" });
+      expect(s.items[0].cutoutURL).toBe("/cut.png");
+    });
+
+    it("returns the same state for an unknown itemId", () => {
+      let s = editorReducer(initialEditorState(), { type: "add", item: mk("a") });
+      s = editorReducer(s, { type: "undo" });
+      expect(editorReducer(s, cut("nope"))).toBe(s);
+    });
+
+    it("is idempotent once the URL is set", () => {
+      const s = editorReducer(
+        editorReducer(initialEditorState(), { type: "add", item: mk("a", { itemId: "x" }) }),
+        cut("x"),
+      );
+      expect(editorReducer(s, cut("x"))).toBe(s);
+      // A different URL still swaps.
+      expect(editorReducer(s, cut("x", "/other.png")).items[0].cutoutURL).toBe("/other.png");
+    });
+
+    it("does not mutate frozen input state (items and snapshots)", () => {
+      const snap = Object.freeze([Object.freeze(mk("a", { itemId: "x", x: 5 }))]) as PlacedItem[];
+      const frozen: EditorState = Object.freeze({
+        items: Object.freeze([Object.freeze(mk("a", { itemId: "x" }))]) as PlacedItem[],
+        selectedId: null,
+        past: Object.freeze([snap]) as unknown as PlacedItem[][],
+        future: Object.freeze([snap]) as unknown as PlacedItem[][],
+      });
+      const n = editorReducer(frozen, cut("x"));
+      expect(n).not.toBe(frozen);
+      expect(frozen.items[0].cutoutURL).toBeUndefined();
+      expect(snap[0].cutoutURL).toBeUndefined();
+      expect(n.past[0][0].cutoutURL).toBe("/cut.png");
+    });
   });
 });

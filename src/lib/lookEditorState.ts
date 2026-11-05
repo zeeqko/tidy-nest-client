@@ -20,6 +20,10 @@ export type EditorAction =
   | { type: "remove"; id: string }
   | { type: "select"; id: string | null }
   | { type: "load"; items: PlacedItem[] }
+  /** A background-removed cutout became ready for inventory item `itemId`:
+   *  every placement of it switches to that image in place (same box), in the
+   *  live items and in every undo/redo snapshot. Not an edit: no history. */
+  | { type: "cutout"; itemId: string; cutoutURL: string }
   | { type: "undo" }
   | { type: "redo" };
 
@@ -36,6 +40,13 @@ function commit(state: EditorState, items: PlacedItem[], selectedId = state.sele
   const past = [...state.past, state.items];
   if (past.length > HISTORY_LIMIT) past.splice(0, past.length - HISTORY_LIMIT);
   return { items, selectedId, past, future: [] };
+}
+
+/** `items` with `cutoutURL` set on every placement of `itemId`, or the same
+ *  array when none of them needs it (no match, or already set). */
+function withCutout(items: PlacedItem[], itemId: string, cutoutURL: string): PlacedItem[] {
+  if (!items.some((i) => i.itemId === itemId && i.cutoutURL !== cutoutURL)) return items;
+  return items.map((i) => (i.itemId === itemId && i.cutoutURL !== cutoutURL ? { ...i, cutoutURL } : i));
 }
 
 export function editorReducer(state: EditorState, action: EditorAction): EditorState {
@@ -93,6 +104,20 @@ export function editorReducer(state: EditorState, action: EditorAction): EditorS
 
     case "load":
       return initialEditorState(action.items);
+
+    case "cutout": {
+      const { itemId, cutoutURL } = action;
+      const items = withCutout(state.items, itemId, cutoutURL);
+      // Snapshots are patched too, so Undo/Redo never bring the photo back.
+      const patch = (stack: PlacedItem[][]) => {
+        const next = stack.map((snapshot) => withCutout(snapshot, itemId, cutoutURL));
+        return next.every((snapshot, i) => snapshot === stack[i]) ? stack : next;
+      };
+      const past = patch(state.past);
+      const future = patch(state.future);
+      if (items === state.items && past === state.past && future === state.future) return state;
+      return { ...state, items, past, future };
+    }
 
     case "undo": {
       if (state.past.length === 0) return state;

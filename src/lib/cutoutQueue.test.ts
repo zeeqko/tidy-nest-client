@@ -148,4 +148,97 @@ describe("cutoutQueue", () => {
     expect(good).toHaveBeenCalledWith("a", "/x");
     expect(run).toHaveBeenCalledTimes(2);
   });
+
+  describe("subscribeStatus", () => {
+    it("emits pending on enqueue (queued or started) and done after the success subscribers", async () => {
+      const { run, calls } = makeRun();
+      const q = createCutoutQueue(run, 1);
+      const log: string[] = [];
+      q.subscribe((id, url) => log.push(`url:${id}:${url}`));
+      q.subscribeStatus((e) => log.push(`${e.status}:${e.itemId}`));
+      q.enqueue({ id: "a", imageURL: "/a" });
+      q.enqueue({ id: "b", imageURL: "/b" }); // queued behind a
+      expect(log).toEqual(["pending:a", "pending:b"]);
+      calls[0].resolve(ok("/cut-a"));
+      await flush();
+      expect(log).toEqual(["pending:a", "pending:b", "url:a:/cut-a", "done:a"]);
+      calls[1].resolve(ok("/cut-b"));
+      await flush();
+      expect(log.slice(4)).toEqual(["url:b:/cut-b", "done:b"]);
+    });
+
+    it("emits failed for ok:false, a rejection and a throwing run", async () => {
+      const run = vi.fn((id: string): Promise<CutoutResult> => {
+        if (id === "a") return Promise.resolve({ ok: false });
+        if (id === "b") return Promise.reject(new Error("boom"));
+        throw new Error("sync boom");
+      });
+      const q = createCutoutQueue(run, 1);
+      const events = vi.fn();
+      const success = vi.fn();
+      q.subscribe(success);
+      q.subscribeStatus(events);
+      for (const id of ["a", "b", "c"]) q.enqueue({ id, imageURL: `/${id}` });
+      await flush();
+      await flush();
+      expect(events.mock.calls.map(([e]) => `${e.status}:${e.itemId}`)).toEqual([
+        "pending:a",
+        "pending:b",
+        "pending:c",
+        "failed:a",
+        "failed:b",
+        "failed:c",
+      ]);
+      expect(success).not.toHaveBeenCalled();
+    });
+
+    it("emits nothing for deduped or ignored items", async () => {
+      const { run, calls } = makeRun();
+      const q = createCutoutQueue(run);
+      const events = vi.fn();
+      q.subscribeStatus(events);
+      q.enqueue({ id: "a", imageURL: "/a" });
+      q.enqueue({ id: "a", imageURL: "/a" });
+      q.enqueue({ id: "b", imageURL: "/b", cutoutURL: "/c" });
+      q.enqueue({ id: "c" });
+      calls[0].resolve(ok("u"));
+      await flush();
+      q.enqueue({ id: "a", imageURL: "/a" });
+      expect(events.mock.calls.map(([e]) => `${e.status}:${e.itemId}`)).toEqual(["pending:a", "done:a"]);
+      expect(run).toHaveBeenCalledTimes(1);
+    });
+
+    it("isolates a throwing status listener from the others and from the queue", async () => {
+      const { run, calls } = makeRun();
+      const q = createCutoutQueue(run, 1);
+      const good = vi.fn();
+      const success = vi.fn();
+      q.subscribeStatus(() => {
+        throw new Error("bad listener");
+      });
+      q.subscribeStatus(good);
+      q.subscribe(success);
+      q.enqueue({ id: "a", imageURL: "/a" });
+      q.enqueue({ id: "b", imageURL: "/b" });
+      calls[0].resolve(ok("/x"));
+      await flush();
+      expect(success).toHaveBeenCalledWith("a", "/x");
+      expect(good).toHaveBeenCalledWith({ itemId: "a", status: "done" });
+      expect(run).toHaveBeenCalledTimes(2);
+    });
+
+    it("unsubscribe stops further events", async () => {
+      const { run, calls } = makeRun();
+      const q = createCutoutQueue(run);
+      const events = vi.fn();
+      const off = q.subscribeStatus(events);
+      q.enqueue({ id: "a", imageURL: "/a" });
+      off();
+      calls[0].resolve(ok("u"));
+      await flush();
+      q.enqueue({ id: "b", imageURL: "/b" });
+      expect(events).toHaveBeenCalledTimes(1);
+      expect(events).toHaveBeenCalledWith({ itemId: "a", status: "pending" });
+    });
+  });
 });

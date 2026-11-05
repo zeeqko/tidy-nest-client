@@ -23,6 +23,9 @@ export interface CanvasNode {
   /** Whether a Konva.Image node has its picture loaded (false while it still
    *  draws the fallback fill). */
   hasImage?: boolean;
+  /** Absolute URL of the picture a Konva.Image node draws (null while it
+   *  draws the fallback fill). */
+  imageSrc?: string | null;
 }
 
 export interface Point {
@@ -69,6 +72,7 @@ export async function canvasNodes(page: Page, stageIndex = 0): Promise<CanvasNod
       rotation: n.rotation(),
       fill: typeof n.fill === "function" ? (n.fill() ?? null) : null,
       hasImage: typeof n.image === "function" ? Boolean(n.image()) : false,
+      imageSrc: typeof n.image === "function" && n.image() ? (n.image().src ?? null) : null,
     }));
   }, stageIndex);
 }
@@ -263,6 +267,12 @@ export async function addPiece(page: Page, name: string, expectedTotal: number) 
   await expect.poll(async () => (await canvasNodes(page)).length).toBe(expectedTotal);
   await expect(countBadge(page, name)).toBeVisible();
 }
+
+/** The builder's cutout progress region (top-left of the canvas panel). */
+export const cutoutStatus = (page: Page) => canvasPanel(page).getByTestId("cutout-status");
+/** The visible Undo / Redo button (phone or desktop header). */
+export const undoButton = (page: Page) => page.getByRole("button", { name: "Undo", exact: true }).filter({ visible: true });
+export const redoButton = (page: Page) => page.getByRole("button", { name: "Redo", exact: true }).filter({ visible: true });
 
 /** The interactive canvas container (the ✕ and the pill are overlaid in it). */
 export const outfitCanvas = (page: Page) => page.getByTestId("outfit-canvas");

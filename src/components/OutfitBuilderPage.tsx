@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type Ref } from "react";
 import type { LucideIcon } from "lucide-react";
-import { Redo2, Undo2, X } from "lucide-react";
+import { LoaderCircle, Redo2, Undo2, X } from "lucide-react";
 import { Link, useNavigate, useParams } from "react-router-dom";
 import { MobileTopBar } from "./MobileTopBar";
 import { OutfitCanvas, type TransformPatch } from "./OutfitCanvas";
@@ -57,6 +57,9 @@ const SAVE_PILL =
   "flex h-9 shrink-0 items-center justify-center rounded-full bg-cute-primary px-3 sm:px-4 font-body text-sm font-semibold text-cute-primary-foreground transition hover:brightness-105 aria-disabled:cursor-not-allowed aria-disabled:opacity-50 aria-disabled:hover:brightness-100";
 
 const NO_PIECES_HINT = "Add at least one piece";
+
+/** How long the quiet "couldn't remove the background" note stays up. */
+const CUTOUT_FAILURE_MS = 5000;
 
 const HEADER_ICON_BUTTON =
   "flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-cute-surface-alt text-cute-text transition hover:brightness-95 disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:brightness-100";
@@ -147,8 +150,8 @@ function UndoRedoButtons({
  *  Placements live in `useLookEditor` (undo/redo history). Doubles as the
  *  edit flow when mounted at `/stylebook/:id/edit`: the look is loaded via
  *  `useLook` and its placements are loaded into the editor once via
- *  `toPlacedItems` — never through `addItem`, so loading a look for edit
- *  can't kick off the cutout queue. */
+ *  `toPlacedItems` — never through `addItem` (loading is not an edit, so it
+ *  pushes no history); saved pieces without a cutout are then queued for one. */
 export function OutfitBuilderPage() {
   const { id } = useParams<{ id: string }>();
   const isEditing = Boolean(id);
@@ -183,6 +186,62 @@ export function OutfitBuilderPage() {
     };
   }, []);
 
+  // Latest items for async callbacks (the add step, the cutout status
+  // listener). Updated after each commit, and optimistically by the add step
+  // itself so a back-to-back add sees the previous one even before React
+  // re-renders.
+  const itemsRef = useRef<PlacedItem[]>(state.items);
+  useLayoutEffect(() => {
+    itemsRef.current = state.items;
+  }, [state.items]);
+
+  // One cutout queue per builder session. A finished cutout swaps every
+  // placement of that inventory item to it in place (same box; history
+  // snapshots too, so Undo/Redo keep it), and is remembered in
+  // `resolvedCutoutsRef` for later adds of an item whose picker copy has no
+  // `cutoutURL` yet (and shown on its picker tile via `resolvedCutouts`).
+  const [cutoutQueue] = useState(() => createCutoutQueue());
+  const resolvedCutoutsRef = useRef<Map<string, string>>(new Map());
+  const [resolvedCutouts, setResolvedCutouts] = useState<Record<string, string>>({});
+  useEffect(
+    () =>
+      cutoutQueue.subscribe((itemId, cutoutURL) => {
+        resolvedCutoutsRef.current.set(itemId, cutoutURL);
+        setResolvedCutouts((current) =>
+          current[itemId] === cutoutURL ? current : { ...current, [itemId]: cutoutURL },
+        );
+        dispatch({ type: "cutout", itemId, cutoutURL });
+      }),
+    [cutoutQueue, dispatch],
+  );
+
+  // Inventory item ids whose cutout is queued or running (drives the
+  // "Removing background…" pill while one of them is on the canvas), and the
+  // latest failure for a placed piece (a quiet note that hides itself).
+  const [pendingCutouts, setPendingCutouts] = useState<ReadonlySet<string>>(() => new Set());
+  const [cutoutFailure, setCutoutFailure] = useState<{ itemId: string; name: string } | null>(null);
+  const cutoutFailureTimerRef = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
+  useEffect(() => () => clearTimeout(cutoutFailureTimerRef.current), []);
+  useEffect(
+    () =>
+      cutoutQueue.subscribeStatus(({ itemId, status }) => {
+        setPendingCutouts((current) => {
+          if ((status === "pending") === current.has(itemId)) return current;
+          const next = new Set(current);
+          if (status === "pending") next.add(itemId);
+          else next.delete(itemId);
+          return next;
+        });
+        if (status !== "failed") return;
+        const placed = itemsRef.current.find((item) => item.itemId === itemId);
+        if (!placed) return;
+        setCutoutFailure({ itemId, name: placed.name });
+        clearTimeout(cutoutFailureTimerRef.current);
+        cutoutFailureTimerRef.current = setTimeout(() => setCutoutFailure(null), CUTOUT_FAILURE_MS);
+      }),
+    [cutoutQueue],
+  );
+
   // Prefills the form from the loaded look exactly once — guarding with a
   // ref (rather than just depending on `look`) keeps a later refetch from
   // clobbering in-progress edits.
@@ -193,42 +252,28 @@ export function OutfitBuilderPage() {
     setName(look.name);
     setNameEdited(true);
     setOccasion(look.occasion);
-    // Deliberately not routed through `addItem`, which is the only path
-    // allowed to enqueue cutouts.
+    // Not routed through `addItem`: loading is not an edit (no history).
     dispatch({ type: "load", items: toPlacedItems(look.items) });
-  }, [look, dispatch]);
-
-  // One cutout queue per builder session. Its results never touch placed
-  // items (a placement keeps the image it was added with for the whole
-  // session); they only feed `resolvedCutoutsRef`, read by later adds of the
-  // same inventory item whose picker copy has no `cutoutURL` yet.
-  const [cutoutQueue] = useState(() => createCutoutQueue());
-  const resolvedCutoutsRef = useRef<Map<string, string>>(new Map());
-  useEffect(
-    () =>
-      cutoutQueue.subscribe((itemId, cutoutURL) => {
-        resolvedCutoutsRef.current.set(itemId, cutoutURL);
-      }),
-    [cutoutQueue],
-  );
+    // Saved pieces whose item has a photo but no cutout yet get one too (the
+    // queue skips items with a cutout and dedupes repeats).
+    for (const item of look.items) {
+      cutoutQueue.enqueue({ id: item.itemId, imageURL: item.imageURL, cutoutURL: item.cutoutURL });
+    }
+  }, [look, dispatch, cutoutQueue]);
 
   // Adds are serialised: each tap starts loading its image aspect right
   // away, but placement + dispatch run one at a time in tap order, so a
   // slower image can't reorder adds and every add sees the previous one's
   // rect when avoiding overlaps.
   const [addChain] = useState(() => createSerialChain());
-  // Latest items for the async add step. Updated after each commit, and
-  // optimistically by the add step itself so a back-to-back add sees the
-  // previous one even before React re-renders.
-  const itemsRef = useRef<PlacedItem[]>(state.items);
-  useLayoutEffect(() => {
-    itemsRef.current = state.items;
-  }, [state.items]);
-
   const groupMap = useMemo(() => buildGroupMap(categories), [categories]);
   const counts = useMemo(() => countsByItemId(state.items), [state.items]);
 
   const hasPieces = state.items.length > 0;
+  const removingBackground = state.items.some((item) => pendingCutouts.has(item.itemId));
+  // The note only makes sense while that piece is still on the canvas.
+  const shownCutoutFailure =
+    cutoutFailure && state.items.some((item) => item.itemId === cutoutFailure.itemId) ? cutoutFailure : null;
   const autoName = useMemo(
     () => autoLookName(state.items.map((item) => item.name), occasion),
     [state.items, occasion],
@@ -297,7 +342,8 @@ export function OutfitBuilderPage() {
     // fallback only guards against categories changing mid-session.
     const group = (item.categoryId && groupMap.get(item.categoryId)) || "clothes";
     const subcategory = item.subcategory;
-    const cutoutURL = item.cutoutURL || resolvedCutoutsRef.current.get(item.id) || undefined;
+    const knownCutout = () => item.cutoutURL || resolvedCutoutsRef.current.get(item.id) || undefined;
+    const cutoutURL = knownCutout();
     // Starts now (in parallel with any earlier pending add); never rejects
     // and resolves 1 after ~1.5 s at the latest.
     const aspectPromise = loadImageAspect(cutoutURL ?? item.imageURL);
@@ -318,7 +364,10 @@ export function OutfitBuilderPage() {
         zIndex: startingZIndex(group, subcategory, existing.length),
         name: item.name,
         imageURL: item.imageURL,
-        cutoutURL,
+        // Re-read: a cutout that finished while the aspect was loading was
+        // dispatched before this piece existed, so it would miss the swap.
+        // (A cutout keeps its photo's aspect, so the box still fits.)
+        cutoutURL: knownCutout(),
         icon: item.icon,
         iconBg: item.iconBg,
         iconColor: item.iconColor,
@@ -518,12 +567,38 @@ export function OutfitBuilderPage() {
                 onRemove={(placementId) => dispatch({ type: "remove", id: placementId })}
               />
             </div>
+            {/* Cutout progress, top-left of the panel (the ✕ and handles
+                stay clear of it: nothing else lives there). Never catches
+                pointer events, so the canvas below stays fully usable. */}
+            <div
+              role="status"
+              aria-live="polite"
+              className="pointer-events-none absolute top-2.5 left-2.5 z-20 flex max-w-[calc(100%-1.25rem)] flex-col items-start gap-1.5"
+              data-testid="cutout-status"
+            >
+              {removingBackground && (
+                <p className="flex items-center gap-1.5 rounded-full bg-cute-surface/90 px-2.5 py-1 font-body text-xs font-semibold text-cute-text shadow-sm ring-1 ring-cute-border">
+                  <LoaderCircle size={13} className="shrink-0 animate-spin text-cute-primary" aria-hidden="true" />
+                  Removing background…
+                </p>
+              )}
+              {shownCutoutFailure && (
+                <p className="rounded-2xl bg-cute-surface/90 px-2.5 py-1 font-body text-xs text-cute-text-muted shadow-sm ring-1 ring-cute-border">
+                  Couldn't remove the background for {shownCutoutFailure.name}
+                </p>
+              )}
+            </div>
           </div>
           <div
             className={`w-full flex-[2] ${PICKER_MIN_HEIGHT} lg:w-[28rem] lg:flex-none lg:shrink-0`}
             data-testid="builder-picker-panel"
           >
-            <StylebookPicker onAdd={addItem} onUndoLast={undoLast} countsByItemId={counts} />
+            <StylebookPicker
+              onAdd={addItem}
+              onUndoLast={undoLast}
+              countsByItemId={counts}
+              cutoutOverrides={resolvedCutouts}
+            />
           </div>
         </div>
 

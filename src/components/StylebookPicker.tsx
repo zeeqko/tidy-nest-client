@@ -25,6 +25,9 @@ interface StylebookPickerProps {
   onUndoLast(itemId: string): void;
   /** How many copies of each item are on the canvas. */
   countsByItemId: Record<string, number>;
+  /** Cutouts made this session (by item id) that the cached items list may
+   *  not carry yet; a tile prefers them over the item's own images. */
+  cutoutOverrides?: Record<string, string>;
 }
 
 const TOP_TAG_LIMIT = 6;
@@ -32,16 +35,18 @@ const TOP_TAG_LIMIT = 6;
 function PickerTile({
   item,
   count,
+  cutoutURL,
   onAdd,
   onUndoLast,
 }: {
   item: OrganizingItem;
   count: number;
+  cutoutURL?: string;
   onAdd(item: OrganizingItem): void;
   onUndoLast(itemId: string): void;
 }) {
   const Icon = item.icon;
-  const src = item.cutoutURL || item.imageURL;
+  const src = cutoutURL || item.imageURL;
   const onCanvas = count > 0;
   return (
     <div className="relative min-w-0">
@@ -60,7 +65,7 @@ function PickerTile({
               alt=""
               loading="lazy"
               draggable={false}
-              className={`h-full w-full ${item.cutoutURL ? "object-contain" : "object-cover"}`}
+              className={`h-full w-full ${cutoutURL ? "object-contain" : "object-cover"}`}
             />
           ) : (
             <div
@@ -132,7 +137,7 @@ function Chip({
  * parent (the page sizes it, beside the canvas on desktop and below it on a
  * phone). The filter controls stay put and only the tile grid scrolls.
  */
-export function StylebookPicker({ onAdd, onUndoLast, countsByItemId }: StylebookPickerProps) {
+export function StylebookPicker({ onAdd, onUndoLast, countsByItemId, cutoutOverrides }: StylebookPickerProps) {
   const { categories, apiCategories, loading: categoriesLoading, error: categoriesError } = useCategories();
   const { items, loading: itemsLoading, error: itemsError } = useItems(apiCategories);
 
@@ -201,6 +206,7 @@ export function StylebookPicker({ onAdd, onUndoLast, countsByItemId }: Stylebook
             key={item.id}
             item={item}
             count={countsByItemId[item.id] ?? 0}
+            cutoutURL={cutoutOverrides?.[item.id] || item.cutoutURL}
             onAdd={onAdd}
             onUndoLast={onUndoLast}
           />

@@ -5,11 +5,10 @@
 // This module must never throw and never reject — every failure mode (fetch
 // fails, removeBackground resolves null, upload fails, persist fails)
 // resolves to a well-defined `CutoutResult` the caller can branch on, not a
-// rejected promise. The Outfit Builder runs it through `cutoutQueue`, which
-// only caches each resolved cutout URL for *later* adds of the same item
-// (a successful upload is usable this session even if the persist step
-// fails). Pieces already placed on the canvas are never swapped: each keeps
-// the image it was added with.
+// rejected promise. The Outfit Builder runs it through `cutoutQueue`: a
+// resolved cutout URL swaps the pieces of that item already on the canvas to
+// it in place and is reused by later adds of the same item (a successful
+// upload is usable this session even if the persist step fails).
 import { preparePhoto } from "./image";
 import { removeBackground } from "./backgroundRemoval";
 import { uploadImage } from "../api/uploads";
@@ -39,8 +38,8 @@ export type CutoutResult =
  * rest of the session when the final persist step fails (it just won't
  * survive a reload). Resolves `{ ok: false }` if fetch,
  * downscale-fallback-and-removeBackground, or upload all fail to produce a
- * usable cutout — in that case `onCutoutReady` is never called and later
- * adds keep using the original photo.
+ * usable cutout — in that case `onCutoutReady` is never called and the
+ * item's pieces keep using the original photo.
  *
  * `onCutoutReady`, if given, fires as soon as the upload succeeds — *before*
  * the persist step runs — so a caller can start using the cutout without

@@ -7,8 +7,11 @@
 // its box centre (offset = half size, see OutfitCanvas PlacedNode), so the
 // stored top-left is x - offsetX. The layer holds only the placed pieces
 // (Konva.Image) plus, when interactive, the Transformer, which every helper
-// below skips. The 400x711 logical space is not drawn (no board/frame node);
-// its on-screen rect is derived from the stage's scale/offset instead.
+// below skips. The 400x711 base space is not drawn (no board/frame node);
+// its on-screen rect is derived from the stage's scale/offset instead. In the
+// builder, pieces may use the whole panel: they are kept inside the panel's
+// visible logical rect (see `viewInfo`), so stored coordinates can be
+// negative or beyond 400/711.
 import { expect, type Locator, type Page, type TestInfo } from "@playwright/test";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -48,6 +51,28 @@ export async function logicalSpaceInfo(page: Page, stageIndex = 0) {
       return {
         client: { x: stage.x(), y: stage.y(), width: w * stage.scaleX(), height: h * stage.scaleY() },
         stage: { width: stage.width(), height: stage.height() },
+      };
+    },
+    [stageIndex, DESIGN_WIDTH, DESIGN_HEIGHT] as const,
+  );
+}
+
+/** The stage's view: its scale/offset, size, the panel's visible logical
+ *  rect (what the stage shows, in logical units: pieces are clamped into it)
+ *  and `baseScale`, the contain-fit scale of the 400x711 base space for this
+ *  stage size (the builder zooms out below it only to show every piece). */
+export async function viewInfo(page: Page, stageIndex = 0) {
+  return page.evaluate(
+    ([index, w, h]) => {
+      const stage = (window as any).Konva.stages[index];
+      const scale = stage.scaleX();
+      return {
+        scale,
+        offsetX: stage.x(),
+        offsetY: stage.y(),
+        stage: { width: stage.width(), height: stage.height() },
+        visible: { x: -stage.x() / scale, y: -stage.y() / scale, width: stage.width() / scale, height: stage.height() / scale },
+        baseScale: Math.min(stage.width() / w, stage.height() / h),
       };
     },
     [stageIndex, DESIGN_WIDTH, DESIGN_HEIGHT] as const,
@@ -225,6 +250,43 @@ export async function touchDrag(page: Page, from: Point, to: Point, steps = 12) 
   await cdp.detach();
 }
 
+/** Presses on `from` (mouse on desktop projects, one finger via CDP on touch
+ *  projects) and returns controls to move the held pointer and release it. */
+export async function pointerHold(page: Page, testInfo: TestInfo, from: Point) {
+  let at = from;
+  if (testInfo.project.use.hasTouch) {
+    const cdp = await page.context().newCDPSession(page);
+    const touch = (p: Point) => [{ x: p.x, y: p.y, id: 1, radiusX: 2, radiusY: 2, force: 1 }];
+    await cdp.send("Input.dispatchTouchEvent", { type: "touchStart", touchPoints: touch(from) });
+    return {
+      async moveTo(to: Point, steps = 12) {
+        const start = at;
+        for (let i = 1; i <= steps; i++) {
+          const p = { x: start.x + ((to.x - start.x) * i) / steps, y: start.y + ((to.y - start.y) * i) / steps };
+          await cdp.send("Input.dispatchTouchEvent", { type: "touchMove", touchPoints: touch(p) });
+          await page.waitForTimeout(16);
+        }
+        at = to;
+      },
+      async release() {
+        await cdp.send("Input.dispatchTouchEvent", { type: "touchEnd", touchPoints: [] });
+        await cdp.detach();
+      },
+    };
+  }
+  await page.mouse.move(from.x, from.y);
+  await page.mouse.down();
+  return {
+    async moveTo(to: Point, steps = 12) {
+      await page.mouse.move(to.x, to.y, { steps });
+      at = to;
+    },
+    async release() {
+      await page.mouse.up();
+    },
+  };
+}
+
 /** Mouse drag on desktop projects, touch drag on touch projects. */
 export async function pointerDrag(page: Page, testInfo: TestInfo, from: Point, to: Point, steps = 12) {
   if (testInfo.project.use.hasTouch) await touchDrag(page, from, to, steps);
@@ -400,4 +462,17 @@ export function rotatedBox(item: { x: number; y: number; width: number; height: 
   const cx = item.x + item.width / 2;
   const cy = item.y + item.height / 2;
   return { left: cx - halfW, top: cy - halfH, right: cx + halfW, bottom: cy + halfH };
+}
+
+/** Every placed piece's on-screen (rotated, stroke-less) bounding box lies
+ *  inside the interactive canvas (the panel's visible area), within `tol` px. */
+export async function expectPiecesInsideCanvas(page: Page, label: string, tol = 0.5) {
+  const { stage, rects } = await nodeClientRects(page);
+  expect(rects.length, `${label}: pieces drawn`).toBeGreaterThan(0);
+  rects.forEach((r: { x: number; y: number; width: number; height: number }, i: number) => {
+    expect(r.x, `${label}: piece ${i} left inside the panel`).toBeGreaterThanOrEqual(-tol);
+    expect(r.y, `${label}: piece ${i} top inside the panel`).toBeGreaterThanOrEqual(-tol);
+    expect(r.x + r.width, `${label}: piece ${i} right inside the panel`).toBeLessThanOrEqual(stage.width + tol);
+    expect(r.y + r.height, `${label}: piece ${i} bottom inside the panel`).toBeLessThanOrEqual(stage.height + tol);
+  });
 }

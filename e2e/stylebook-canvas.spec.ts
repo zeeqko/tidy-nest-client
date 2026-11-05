@@ -17,6 +17,7 @@ import {
   canvasPanel,
   countBadge,
   emptyCanvasPoint,
+  expectPiecesInsideCanvas,
   logicalSpaceInfo,
   mouseDrag,
   nodeClientRects,
@@ -45,6 +46,7 @@ import {
   stageTransform,
   touchScrollGesture,
   transformerAnchors,
+  viewInfo,
   type CanvasNode,
 } from "./support/canvas";
 
@@ -283,21 +285,25 @@ test.describe("fixed canvas", () => {
     expectSameNodes(await canvasNodes(page), nodes);
   });
 
-  test("(c) dragging a piece moves only that piece and it cannot leave the 400x711 space, even rotated", async ({
+  test("(c) dragging a piece moves only that piece and it cannot leave the panel's visible area, even rotated", async ({
     authedPage: page,
     userApi,
   }, testInfo) => {
     const { nodes } = await twoPieceCanvas(page);
     const area = (await page.getByTestId("outfit-canvas").boundingBox())!;
     const viewport = page.viewportSize()!;
+    // The panel's visible logical rect: pieces are clamped into it (not into
+    // the base 400x711 space). The view never changes during these drags.
+    const view = await viewInfo(page);
+    const { visible } = view;
 
-    // Piece 0 to (beyond) the top-left corner.
+    // Piece 0 to (beyond) the panel's top-left corner.
     const from0 = await nodeScreenCenter(page, 0);
     await pointerDrag(page, testInfo, from0, { x: area.x + 2, y: area.y + 2 }, 16);
     await page.waitForTimeout(300);
     const afterFirst = await canvasNodes(page);
-    expect(afterFirst[0].x).toBeCloseTo(0, 3);
-    expect(afterFirst[0].y).toBeCloseTo(0, 3);
+    expect(afterFirst[0].x, "piece 0 against the panel's left edge").toBeCloseTo(visible.x, 3);
+    expect(afterFirst[0].y, "piece 0 against the panel's top edge").toBeCloseTo(visible.y, 3);
     expectSameNodes([afterFirst[1]], [nodes[1]]);
 
     // Rotate piece 1 with the Transformer's rotate handle (~45 degrees).
@@ -322,11 +328,15 @@ test.describe("fixed canvas", () => {
     const afterSecond = await canvasNodes(page);
     expectSameNodes([afterSecond[0]], [afterFirst[0]]);
     const box1 = rotatedBox(afterSecond[1]);
-    expect(box1.right, "rotated piece pushed against the right edge").toBeCloseTo(DESIGN_WIDTH, 3);
-    expect(box1.bottom).toBeLessThanOrEqual(DESIGN_HEIGHT + 1e-6);
+    expect(box1.right, "rotated piece pushed against the panel's right edge").toBeCloseTo(visible.x + visible.width, 3);
+    expect(box1.bottom).toBeLessThanOrEqual(visible.y + visible.height + 1e-6);
     expect(afterSecond[1].y, "piece 1 moved down").toBeGreaterThan(nodes[1].y);
+    await expectPiecesInsideCanvas(page, "after the corner drags");
+    expect(await viewInfo(page), "the view did not change while dragging").toEqual(view);
 
-    // Persisted: every rotated bounding box lies inside 0..400 x 0..711.
+    // Persisted: every rotated bounding box lies inside the panel's visible
+    // logical rect (which extends beyond 0..400 x 0..711 where the panel has
+    // margins around the base space).
     await saveNewLook(page, "Corner look");
     const [look] = await userApi.looks();
     const saved = await userApi.look(look.id);
@@ -334,11 +344,16 @@ test.describe("fixed canvas", () => {
     expect(saved.items.some((i) => Math.abs(i.rotation) > 20)).toBe(true);
     for (const item of saved.items) {
       const box = rotatedBox(item);
-      expect(box.left).toBeGreaterThanOrEqual(-1e-6);
-      expect(box.top).toBeGreaterThanOrEqual(-1e-6);
-      expect(box.right).toBeLessThanOrEqual(DESIGN_WIDTH + 1e-6);
-      expect(box.bottom).toBeLessThanOrEqual(DESIGN_HEIGHT + 1e-6);
+      expect(box.left).toBeGreaterThanOrEqual(visible.x - 1e-6);
+      expect(box.top).toBeGreaterThanOrEqual(visible.y - 1e-6);
+      expect(box.right).toBeLessThanOrEqual(visible.x + visible.width + 1e-6);
+      expect(box.bottom).toBeLessThanOrEqual(visible.y + visible.height + 1e-6);
     }
+    // Saved as dropped (not re-clamped to the base space).
+    expectSameNodes(
+      [...saved.items].sort((a, b) => a.zIndex - b.zIndex).map((i) => ({ ...i, cls: "", fill: null })),
+      afterSecond,
+    );
   });
 
   test("(d) a saved three-piece look reopens with identical transforms and the detail page shows it unclipped", async ({
@@ -652,7 +667,8 @@ test.describe("docked layout", () => {
     const panelInner = await canvasPanel(page).evaluate((el) => ({ width: el.clientWidth, height: el.clientHeight }));
     expect(surface.width, `${label}: dots span the panel's width`).toBeCloseTo(panelInner.width, 0);
     expect(surface.height, `${label}: dots span the panel's height`).toBeCloseTo(panelInner.height, 0);
-    // The (undrawn) 400x711 logical space, from the stage transform, is fully
+    // With every piece in the base space, the view is the plain contain-fit:
+    // the (undrawn) 400x711 base space, from the stage transform, is fully
     // inside the canvas panel...
     const space = await logicalSpaceInfo(page);
     expect(space.client.x).toBeGreaterThanOrEqual(-0.5);

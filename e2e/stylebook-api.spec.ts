@@ -1,5 +1,5 @@
 // API tests for the Stylebook-related endpoints (categories' stylebookGroup
-// and the looks' 400x711 coordinates). Uses the `request` fixture through the
+// and the looks' coordinates, in 400x711 logical units but not bounded by it). Uses the `request` fixture through the
 // e2e Vite proxy (same origin the SPA uses); runs in the desktop project only.
 import { request as playwrightRequest } from "@playwright/test";
 import { test, expect, api, uniqueEmail, PASSWORD } from "./fixtures";
@@ -126,6 +126,45 @@ test.describe("looks: 400x711 coordinates", () => {
     const malformed = await request.post("/api/looks/", { data: "{not json", headers: { "Content-Type": "application/json" } });
     expect(malformed.status()).toBe(400);
     expect((await request.get("/api/looks/999999999")).status()).toBe(404);
+  });
+
+  test("coordinates outside the 400x711 base space (negative, beyond 400/711) round-trip unchanged", async ({ request }) => {
+    // Pieces may use the whole builder panel, so a look can hold pieces in
+    // the panel's margins around the base space.
+    const a = api(request);
+    await a.signupAndLogin(uniqueEmail("margins"));
+    const shirt = await a.createItem({ name: "Shirt", category: "Clothes", subcategory: "Tops", tags: [] });
+    const shoe = await a.createItem({ name: "Shoe", category: "Shoes", subcategory: "Sneakers", tags: [] });
+    const strip = (list: { itemId: string; x: number; y: number; width: number; height: number; rotation: number; zIndex: number }[]) =>
+      [...list]
+        .sort((p, q) => p.zIndex - q.zIndex)
+        .map(({ itemId, x, y, width, height, rotation, zIndex }) => ({ itemId, x, y, width, height, rotation, zIndex }));
+
+    const items = [
+      { itemId: shirt.id, x: -213.625, y: -40.25, width: 150.5, height: 220.75, rotation: 12.5, zIndex: 0 },
+      { itemId: shoe.id, x: 512.875, y: 800.5, width: 90.125, height: 60.0625, rotation: -33.75, zIndex: 1 },
+      { itemId: shirt.id, x: 401.0000001, y: 711.25, width: 10, height: 10, rotation: 0, zIndex: 2 },
+    ];
+    const created = await request.post("/api/looks/", { data: { name: "In the margins", items } });
+    expect(created.status()).toBe(201);
+    const look = await created.json();
+    expect(strip(look.items)).toEqual(strip(items));
+    const fetched = await request.get(`/api/looks/${look.id}`);
+    expect(fetched.status()).toBe(200);
+    expect(strip((await fetched.json()).items)).toEqual(strip(items));
+
+    const moved = [
+      { itemId: shoe.id, x: -1200.5, y: -350.125, width: 80, height: 40, rotation: 90, zIndex: 5 },
+      { itemId: shirt.id, x: 1650.25, y: 2048.75, width: 120, height: 180, rotation: 180, zIndex: 6 },
+    ];
+    const put = await request.put(`/api/looks/${look.id}`, { data: { name: "In the margins", occasion: "", items: moved } });
+    expect(put.status()).toBe(200);
+    const refetched = await request.get(`/api/looks/${look.id}`);
+    expect(refetched.status()).toBe(200);
+    expect(strip((await refetched.json()).items)).toEqual(strip(moved));
+    // And it is listed with the same numbers.
+    const listed = (await a.looks()).find((l) => l.id === look.id);
+    expect(strip(listed!.items)).toEqual(strip(moved));
   });
 
   test("another user's look is not visible (404)", async ({ request }) => {

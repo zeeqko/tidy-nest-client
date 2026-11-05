@@ -204,7 +204,7 @@ test.describe("selection ✕ and pill", () => {
     await expectCrossOnCorner(page, 2, "on the selected copy");
   });
 
-  test("(c) a piece dragged into the logical space's top-right corner still has its ✕ fully inside the canvas", async ({
+  test("(c) a piece dragged into the panel's top-right corner still has its ✕ fully inside the canvas", async ({
     authedPage: page,
   }, testInfo) => {
     await openBuilder(page);
@@ -212,20 +212,23 @@ test.describe("selection ✕ and pill", () => {
     await addPiece(page, denim, 2);
 
     const area = (await outfitCanvas(page).boundingBox())!;
-    // The 400x711 space is not drawn; its on-screen rect comes from the
-    // stage transform.
+    // Pieces may use the whole panel, so the corner the piece is clamped
+    // against is the panel's own (beyond the base 400x711 space's corner,
+    // whose on-screen rect comes from the stage transform, wherever the panel
+    // has margins around it).
     const space = await logicalSpaceInfo(page);
-    const spaceTopRight = { x: area.x + space.client.x + space.client.width, y: area.y + space.client.y };
+    const panelTopRight = { x: area.x + area.width, y: area.y };
+    expect(area.x + space.client.x + space.client.width).toBeLessThanOrEqual(panelTopRight.x + 0.5);
     const from = await nodeScreenCenter(page, 1);
-    // Aim beyond the corner: the piece is clamped against it.
-    await pointerDrag(page, testInfo, from, { x: spaceTopRight.x - 2, y: spaceTopRight.y + 2 }, 16);
+    // Aim at the corner: the piece is clamped against it.
+    await pointerDrag(page, testInfo, from, { x: panelTopRight.x - 2, y: panelTopRight.y + 2 }, 16);
     const cross = removeCross(page);
     await expect(cross).toBeVisible();
     await page.waitForTimeout(200);
 
     const piece = await nodeScreenRect(page, 1);
-    expect(piece.x + piece.width, "piece is against the logical space's right edge").toBeCloseTo(spaceTopRight.x, 0);
-    expect(piece.y, "piece is against the logical space's top edge").toBeCloseTo(spaceTopRight.y, 0);
+    expect(Math.abs(piece.x + piece.width - panelTopRight.x), "piece is against the panel's right edge").toBeLessThanOrEqual(1);
+    expect(Math.abs(piece.y - panelTopRight.y), "piece is against the panel's top edge").toBeLessThanOrEqual(1);
 
     const box = (await cross.boundingBox())!;
     expect(box.x).toBeGreaterThanOrEqual(area.x - 0.5);
@@ -234,8 +237,8 @@ test.describe("selection ✕ and pill", () => {
     expect(box.y + box.height).toBeLessThanOrEqual(area.y + area.height + 0.5);
     // Still at that corner: within half its size of it (clamping only pulls
     // it in from the unclamped corner + 11 / corner - 11 spot).
-    expect(Math.abs(box.x + box.width / 2 - spaceTopRight.x)).toBeLessThanOrEqual(box.width / 2 + 0.5);
-    expect(Math.abs(box.y + box.height / 2 - spaceTopRight.y)).toBeLessThanOrEqual(box.height / 2 + 0.5);
+    expect(Math.abs(box.x + box.width / 2 - panelTopRight.x)).toBeLessThanOrEqual(box.width / 2 + 0.5);
+    expect(Math.abs(box.y + box.height / 2 - panelTopRight.y)).toBeLessThanOrEqual(box.height / 2 + 0.5);
     await saveScreenshot(page, testInfo, "rb-c-corner", { target: outfitCanvas(page) });
 
     // And it works there.

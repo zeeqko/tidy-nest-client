@@ -33,6 +33,7 @@ const ZONE_RANK: Record<Zone, number> = {
 
 const SHIFT_FRACTION = 0.12;
 const MAX_ATTEMPTS = 12;
+const VERTICAL_OFFSETS = [0, 0.12, -0.12, 0.24, -0.24];
 const ACCEPTABLE_OVERLAP = 0.25;
 
 function zoneOf(group: StylebookGroup, subcategory: string): Zone {
@@ -91,16 +92,24 @@ export function placeItem(
 
   let best: Rect | null = null;
   let bestOverlap = Infinity;
-  for (let k = 0; k < MAX_ATTEMPTS; k++) {
+  search: for (let k = 0; k < MAX_ATTEMPTS; k++) {
     const shift = k === 0 ? 0 : Math.ceil(k / 2) * SHIFT_FRACTION * visible.width * (k % 2 === 1 ? 1 : -1);
-    const pos = clampInto(centerX + shift - width / 2, centerY - height / 2, width, height, bounds);
-    const candidate: Rect = { ...pos, width, height };
-    const overlap = existing.reduce((sum, r) => sum + overlapArea(candidate, r), 0);
-    if (overlap < bestOverlap) {
-      best = candidate;
-      bestOverlap = overlap;
+    for (const dyFraction of VERTICAL_OFFSETS) {
+      const pos = clampInto(
+        centerX + shift - width / 2,
+        centerY + dyFraction * visible.height - height / 2,
+        width,
+        height,
+        bounds,
+      );
+      const candidate: Rect = { ...pos, width, height };
+      const overlap = existing.reduce((sum, r) => sum + overlapArea(candidate, r), 0);
+      if (overlap < bestOverlap) {
+        best = candidate;
+        bestOverlap = overlap;
+      }
+      if (overlap <= ACCEPTABLE_OVERLAP * area) break search;
     }
-    if (overlap <= ACCEPTABLE_OVERLAP * area) break;
   }
   return { ...(best as Rect), rotation: 0 };
 }

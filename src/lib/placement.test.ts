@@ -59,11 +59,18 @@ describe("placeItem", () => {
     expect(cy(o)).toBeLessThan(cy(t));
   });
 
-  it("shifts a second top so it overlaps the first by under 50%", () => {
-    const first = placeItem(item("clothes", "Tops"), [], visible);
-    const second = placeItem(item("clothes", "Tops"), [first], visible);
-    inside(second, visible);
-    expect(overlapArea(first, second) / (second.width * second.height)).toBeLessThan(0.5);
+  it("keeps square tops under 50% overlap with each existing item", () => {
+    const placed: Rect[] = [];
+    for (let i = 0; i < 3; i++) {
+      const next = placeItem(item("clothes", "Tops", 1), placed, visible);
+      inside(next, visible);
+      if (i > 0) {
+        for (const r of placed) {
+          expect(overlapArea(r, next) / (next.width * next.height)).toBeLessThan(0.5);
+        }
+      }
+      placed.push(next);
+    }
   });
 
   it("handles very wide and very tall aspects", () => {

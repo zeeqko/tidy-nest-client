@@ -24,3 +24,11 @@ dev-dist
 *.njsproj
 *.sln
 *.sw?
+
+# Playwright e2e artefacts
+/test-results/
+/playwright-report/
+/e2e/screenshots/
+/blob-report/
+/playwright/.cache/
+.vitest/

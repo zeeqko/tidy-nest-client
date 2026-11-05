@@ -3,6 +3,10 @@ import react from '@vitejs/plugin-react'
 import tailwindcss from '@tailwindcss/vite'
 import { VitePWA } from 'vite-plugin-pwa'
 
+// Where /api and /uploads are proxied in dev. Defaults to the local Go
+// backend; the Playwright e2e stack points it at its own throwaway backend.
+const apiTarget = process.env.E2E_API_TARGET || "http://localhost:8080"
+
 // https://vite.dev/config/
 export default defineConfig({
   worker: {
@@ -75,8 +79,8 @@ export default defineConfig({
   ],
   server: {
     proxy: {
-      "/api": "http://localhost:8080",
-      "/uploads": "http://localhost:8080",
+      "/api": apiTarget,
+      "/uploads": apiTarget,
     },
   },
 })

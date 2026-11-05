@@ -1,7 +1,7 @@
 // End-to-end tests for the Stylebook Outfit Builder: picker tap-to-add and
-// filters, the fixed (non-panning) canvas, save/reopen, the mobile sheet
-// snaps, photo-less items, hidden categories, the category form's Stylebook
-// group, and window resizing. Runs in the desktop (1440x900, mouse) and
+// filters, the fixed (non-panning) canvas, save/reopen, the docked
+// canvas + picker layout, photo-less items, hidden categories, the category
+// form's Stylebook group, and window resizing. Runs in the desktop (1440x900, mouse) and
 // mobile (390x844, touch) projects; viewport-specific tests skip themselves.
 import type { Page } from "@playwright/test";
 import { test, expect, ITEM_NAMES, type ApiLook, type ApiLookItem } from "./fixtures";
@@ -11,7 +11,10 @@ import {
   addPiece,
   addTile,
   anchorPoint,
+  boardInfo,
+  boxesOverlap,
   canvasNodes,
+  canvasPanel,
   countBadge,
   emptyCanvasPoint,
   mouseDrag,
@@ -19,18 +22,17 @@ import {
   nodeScreenCenter,
   openBuilder,
   picker,
-  pickerHandle,
+  pickerPanel,
+  pickerScroller,
   pinch,
-  placedNames,
-  placedRegion,
   pointerDrag,
   rotatedBox,
   rotaterPoint,
   saveNewLook,
   saveScreenshot,
   selectGroup,
+  selectPiece,
   stageTransform,
-  touchDrag,
   touchScrollGesture,
   type CanvasNode,
 } from "./support/canvas";
@@ -57,12 +59,14 @@ function expectSameNodes(actual: CanvasNode[], expected: CanvasNode[]) {
 }
 
 test.describe("picker tap-to-add", () => {
-  test("(a) each tap adds exactly one copy; Undo and the check badge remove only the last copy", async ({ authedPage: page }) => {
+  test("(a) each tap adds exactly one copy; Undo, the check badge and the toolbar's Remove remove only one piece", async ({
+    authedPage: page,
+  }, testInfo) => {
     await openBuilder(page);
+    // The old "Placed pieces" list is gone for good.
+    await expect(page.getByRole("region", { name: "Placed pieces" })).toHaveCount(0);
 
     await addPiece(page, linen, 1);
-    expect(await placedNames(page)).toEqual([linen]);
-    await expect(placedRegion(page).getByText("1 piece", { exact: true })).toBeVisible();
     const badge = countBadge(page, linen);
     await expect(badge).toHaveAccessibleName(`Remove last ${linen} from canvas (1 on canvas)`);
     await expect(badge).toHaveText(""); // a lone check, no number at 1
@@ -70,7 +74,6 @@ test.describe("picker tap-to-add", () => {
 
     // Second tap: a second copy, count 2.
     await addPiece(page, linen, 2);
-    expect(await placedNames(page)).toEqual([linen, linen]);
     await expect(badge).toHaveAccessibleName(`Remove last ${linen} from canvas (2 on canvas)`);
     await expect(badge).toHaveText("2");
     const twoCopies = await canvasNodes(page);
@@ -78,7 +81,7 @@ test.describe("picker tap-to-add", () => {
 
     // One Undo removes only the last placement.
     await page.getByRole("button", { name: "Undo" }).filter({ visible: true }).click();
-    await expect(placedRegion(page).getByRole("listitem")).toHaveCount(1);
+    await expect.poll(async () => (await canvasNodes(page)).length).toBe(1);
     await expect(badge).toHaveAccessibleName(`Remove last ${linen} from canvas (1 on canvas)`);
     expectSameNodes(await canvasNodes(page), [first]);
 
@@ -89,10 +92,24 @@ test.describe("picker tap-to-add", () => {
     await addPiece(page, linen, 3);
     await expect(badge).toHaveAccessibleName(`Remove last ${linen} from canvas (2 on canvas)`);
     await badge.click();
-    await expect(placedRegion(page).getByRole("listitem")).toHaveCount(2);
-    expect(await placedNames(page)).toEqual([linen, denim]);
+    await expect.poll(async () => (await canvasNodes(page)).length).toBe(2);
     await expect(badge).toHaveAccessibleName(`Remove last ${linen} from canvas (1 on canvas)`);
+    await expect(countBadge(page, denim)).toHaveAccessibleName(`Remove last ${denim} from canvas (1 on canvas)`);
     expectSameNodes(await canvasNodes(page), withJacket);
+
+    // The canvas toolbar's Remove deletes just the selected piece; its tile
+    // loses the check badge and the other piece stays where it was.
+    const toolbar = await selectPiece(page, testInfo, 1);
+    const label = (await toolbar.getAttribute("aria-label"))!;
+    const removed = label.replace(/ actions$/, "");
+    const kept = removed === linen ? denim : linen;
+    expect([linen, denim]).toContain(removed);
+    await toolbar.getByRole("button", { name: `Remove ${removed}` }).click();
+    await expect.poll(async () => (await canvasNodes(page)).length).toBe(1);
+    await expect(countBadge(page, removed)).toHaveCount(0);
+    await expect(countBadge(page, kept)).toHaveAccessibleName(`Remove last ${kept} from canvas (1 on canvas)`);
+    // The tap selected the top piece (layer index 1), so the bottom one remains.
+    expectSameNodes(await canvasNodes(page), [withJacket[0]]);
   });
 
   test("(b) group, subcategory and tag filters never change placed items; tags stay clearable while searching; search spans groups", async ({
@@ -103,11 +120,9 @@ test.describe("picker tap-to-add", () => {
     await addPiece(page, linen, 1);
     await selectGroup(page, "Shoes");
     await addPiece(page, sneakers, 2);
-    const names = await placedNames(page);
     const nodes = await canvasNodes(page);
 
     const unchanged = async () => {
-      expect(await placedNames(page)).toEqual(names);
       expectSameNodes(await canvasNodes(page), nodes);
     };
 
@@ -129,6 +144,7 @@ test.describe("picker tap-to-add", () => {
     await expect(addTile(page, denim)).toHaveCount(0);
     await unchanged();
     await chip("All").click();
+    await expect(countBadge(page, linen)).toHaveAccessibleName(`Remove last ${linen} from canvas (1 on canvas)`);
 
     // Tag chip.
     const linenTag = picker(page).getByRole("button", { name: `#${closet.tags.linen}` });
@@ -206,12 +222,19 @@ test.describe("fixed canvas", () => {
 
       // Controls: the same gestures off the canvas do act on the page, so the
       // assertions above are not vacuous.
-      const below = (await placedRegion(page).boundingBox())!;
-      const offCanvas = { x: page.viewportSize()!.width / 2, y: Math.min(below.y + 20, page.viewportSize()!.height - 120) };
+      // Scroll control off the canvas (and off the picker, whose grid would
+      // take the scroll): the page's own top bar.
+      const title = (await page.getByRole("heading", { name: "Create a Look" }).filter({ visible: true }).boundingBox())!;
+      const offCanvas = { x: title.x + title.width / 2, y: title.y + title.height / 2 };
       await touchScrollGesture(page, offCanvas, -250);
       await page.waitForTimeout(300);
       expect(await page.evaluate(() => window.scrollY), "control: touch scroll off the canvas scrolls the page").toBeGreaterThan(0);
-      await pinch(page, offCanvas, 2);
+      // Pinch control on the picker panel (touch-action auto; the top bar is
+      // too close to the viewport edge for the synthetic pinch's fingers).
+      await page.evaluate(() => window.scrollTo(0, 0));
+      await page.waitForTimeout(200);
+      const panel = (await pickerPanel(page).boundingBox())!;
+      await pinch(page, { x: panel.x + panel.width / 2, y: panel.y + panel.height / 2 }, 2);
       await page.waitForTimeout(300);
       const zoomed = await page.evaluate(() => window.visualViewport?.scale ?? 1);
       expect(zoomed, "control: the same pinch off the canvas zooms the page").toBeGreaterThan(1);
@@ -319,7 +342,6 @@ test.describe("fixed canvas", () => {
     // Reopen in the editor: the canvas shows exactly the saved transforms.
     await openBuilder(page, `/stylebook/${before.id}/edit`);
     await expect(page.getByPlaceholder("Name your look")).toHaveValue("Three Piece Look");
-    await expect(placedRegion(page).getByRole("listitem")).toHaveCount(3);
     await expect.poll(async () => (await canvasNodes(page)).length).toBe(3);
     const sorted = [...before.items].sort((a, b) => a.zIndex - b.zIndex);
     expectSameNodes(
@@ -337,6 +359,7 @@ test.describe("fixed canvas", () => {
     await expect(page.getByText("3 pieces").filter({ visible: true })).toBeVisible();
     await expect.poll(async () => (await canvasNodes(page)).length).toBe(3);
     await expect.poll(async () => (await canvasNodes(page)).filter((n) => n.hasImage).length).toBe(3);
+    expect(await boardInfo(page), "the read-only detail canvas draws no board frame").toBeNull();
     const { stage, container, rects } = await nodeClientRects(page);
     const viewport = page.viewportSize()!;
     expect(container.x).toBeGreaterThanOrEqual(0);
@@ -362,7 +385,7 @@ test.describe("fixed canvas", () => {
     const [{ id }] = await userApi.looks();
     // Reopen, add a rank-0 piece (shoes), save again.
     await openBuilder(page, `/stylebook/${id}/edit`);
-    await expect(placedRegion(page).getByRole("listitem")).toHaveCount(2);
+    await expect.poll(async () => (await canvasNodes(page)).length).toBe(2);
     await selectGroup(page, "Shoes");
     await addPiece(page, sneakers, 3);
     await page.getByRole("button", { name: "Save Changes" }).click();
@@ -406,7 +429,7 @@ test.describe("fixed canvas", () => {
     // Reopen, resize smaller then larger, save again: identical numbers.
     await page.setViewportSize({ width: 1440, height: 900 });
     await openBuilder(page, `/stylebook/${id}/edit`);
-    await expect(placedRegion(page).getByRole("listitem")).toHaveCount(3);
+    await expect.poll(async () => (await canvasNodes(page)).length).toBe(3);
     await page.setViewportSize({ width: 900, height: 650 });
     await page.waitForTimeout(400);
     await page.setViewportSize({ width: 1600, height: 1000 });
@@ -430,7 +453,6 @@ test.describe("canvas toolbar", () => {
     const toolbar = page.getByRole("toolbar", { name: `${linen} actions` });
     await expect(toolbar).toBeVisible();
     await toolbar.getByRole("button", { name: `Copy ${linen}` }).click();
-    await expect(placedRegion(page).getByRole("listitem")).toHaveCount(2);
     await expect.poll(async () => (await canvasNodes(page)).length).toBe(2);
     // Let the copy's image load: before the fix this swapped the copy's node
     // and left the Transformer on the destroyed one.
@@ -450,91 +472,143 @@ test.describe("canvas toolbar", () => {
   });
 });
 
-test.describe("picker sheet layout", () => {
-  test("(e) canvas fills the width; the drag handle stays inside viewport and container at every snap; Save is reachable", async ({
-    authedPage: page,
-  }, testInfo) => {
-    const mobile = testInfo.project.name === "mobile";
-    await openBuilder(page);
-    await addPiece(page, linen, 1);
-    await addPiece(page, tee, 2);
+test.describe("docked layout", () => {
+  type Box = { x: number; y: number; width: number; height: number };
+
+  /** Checks the canvas + picker panels at the current viewport size and saves a screenshot. */
+  async function checkLayout(page: Page, testInfo: import("@playwright/test").TestInfo, label: string, phone: boolean) {
     await page.evaluate(() => window.scrollTo(0, 0));
+    await page.waitForTimeout(300); // let the ResizeObserver-driven stage settle
     const viewport = page.viewportSize()!;
+    const canvas: Box = (await canvasPanel(page).boundingBox())!;
+    const pick: Box = (await pickerPanel(page).boundingBox())!;
+    const section: Box = (await picker(page).boundingBox())!;
 
-    const area = (await page.getByTestId("builder-canvas-area").boundingBox())!;
-    const canvas = (await page.getByTestId("outfit-canvas").boundingBox())!;
-    if (mobile) {
-      // Page gutters are px-5 (20px) on mobile; the canvas box spans the rest.
-      expect(area.x).toBeCloseTo(20, 0);
-      expect(area.width).toBeCloseTo(viewport.width - 40, 0);
+    expect(boxesOverlap(canvas, pick), `${label}: canvas and picker panels do not overlap`).toBe(false);
+    expect(boxesOverlap(canvas, section), `${label}: canvas and picker section do not overlap`).toBe(false);
+    for (const [name, box] of [["canvas", canvas], ["picker", pick]] as const) {
+      expect(box.x, `${label}: ${name} left edge inside the viewport`).toBeGreaterThanOrEqual(0);
+      expect(box.x + box.width, `${label}: ${name} right edge inside the viewport`).toBeLessThanOrEqual(viewport.width + 0.5);
+      expect(box.height, `${label}: ${name} has a real height`).toBeGreaterThan(100);
     }
-    expect(canvas.width).toBeGreaterThanOrEqual(area.width - 2); // only the 1px border each side
-    const stage = await stageTransform(page);
-    expect(stage.width).toBeCloseTo(canvas.width, 0);
+    // The section fills its docked slot.
+    expect(section.height).toBeCloseTo(pick.height, 0);
+    // No horizontal page scroll.
+    expect(
+      await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth),
+      `${label}: page does not scroll horizontally`,
+    ).toBe(true);
 
-    const handle = pickerHandle(page);
-    const checkHandle = async (snap: string) => {
-      await expect(handle).toHaveAccessibleName(`Resize picker (currently ${snap})`);
-      await page.waitForTimeout(300); // let the height transition settle
-      const box = (await handle.boundingBox())!;
-      const container = (await page.getByTestId("builder-canvas-area").boundingBox())!;
-      expect(box.y, `${snap}: handle top inside viewport`).toBeGreaterThanOrEqual(0);
-      expect(box.y + box.height, `${snap}: handle bottom inside viewport`).toBeLessThanOrEqual(viewport.height);
-      expect(box.x).toBeGreaterThanOrEqual(0);
-      expect(box.x + box.width).toBeLessThanOrEqual(viewport.width);
-      expect(box.y, `${snap}: handle top inside container`).toBeGreaterThanOrEqual(container.y);
-      expect(box.y + box.height, `${snap}: handle bottom inside container`).toBeLessThanOrEqual(container.y + container.height);
-      // Nothing else is painted over the handle's centre.
-      const hit = await page.evaluate(
-        ({ x, y }) => document.elementFromPoint(x, y)?.closest("button")?.getAttribute("aria-label") ?? null,
-        { x: box.x + box.width / 2, y: box.y + box.height / 2 },
+    // Both panels are usable without scrolling the page: fully on screen
+    // (on a phone, above the fixed bottom nav).
+    const navTop = await page.evaluate(() => {
+      const nav = [...document.querySelectorAll("nav")].find(
+        (n) => getComputedStyle(n).position === "fixed" && getComputedStyle(n).display !== "none",
       );
-      expect(hit, `${snap}: handle is the topmost element at its centre`).toMatch(/^Resize picker/);
-      return box;
-    };
+      return nav ? nav.getBoundingClientRect().top : window.innerHeight;
+    });
+    expect(canvas.y, `${label}: canvas top on screen`).toBeGreaterThanOrEqual(0);
+    expect(Math.max(canvas.y + canvas.height, pick.y + pick.height), `${label}: panels end above the bottom nav / viewport`).toBeLessThanOrEqual(navTop + 0.5);
 
-    await checkHandle("half");
-    await saveScreenshot(page, testInfo, "e-sheet-half");
+    if (phone) {
+      expect(pick.y, `${label}: picker is below the canvas`).toBeGreaterThanOrEqual(canvas.y + canvas.height);
+      const ratio = canvas.height / pick.height;
+      expect(ratio, `${label}: canvas/picker height ratio ~60/40`).toBeGreaterThanOrEqual(1.1);
+      expect(ratio).toBeLessThanOrEqual(2.2);
+    } else {
+      expect(pick.x, `${label}: picker is right of the canvas`).toBeGreaterThanOrEqual(canvas.x + canvas.width);
+      expect(canvas.height, `${label}: canvas panel is tall`).toBeGreaterThanOrEqual(400);
+      expect(pick.height, `${label}: picker panel is tall`).toBeGreaterThanOrEqual(400);
+      expect(pick.width, `${label}: picker panel is ~28rem wide`).toBeCloseTo(448, 0);
+    }
 
-    // Drag the handle all the way up: full.
-    let box = (await handle.boundingBox())!;
-    await pointerDrag(page, testInfo, { x: box.x + box.width / 2, y: box.y + box.height / 2 }, { x: box.x + box.width / 2, y: area.y + 4 }, 14);
-    await checkHandle("full");
-    await saveScreenshot(page, testInfo, "e-sheet-full");
+    // The tile grid scrolls inside the picker panel (and the page does not).
+    const scroller = pickerScroller(page);
+    expect(await scroller.evaluate((el) => getComputedStyle(el).overflowY)).toBe("auto");
+    const dims = await scroller.evaluate((el) => ({ scrollHeight: el.scrollHeight, clientHeight: el.clientHeight }));
+    expect(dims.scrollHeight, `${label}: enough tiles to overflow the grid`).toBeGreaterThan(dims.clientHeight);
+    const scrolled = await scroller.evaluate((el) => {
+      el.scrollTop = 120;
+      return el.scrollTop;
+    });
+    expect(scrolled, `${label}: grid scrolled inside its panel`).toBeGreaterThan(0);
+    expect(await page.evaluate(() => window.scrollY), `${label}: page did not scroll`).toBe(0);
+    await scroller.evaluate((el) => {
+      el.scrollTop = 0;
+    });
 
-    // And all the way down: peek.
-    box = (await handle.boundingBox())!;
-    await pointerDrag(
-      page,
-      testInfo,
-      { x: box.x + box.width / 2, y: box.y + box.height / 2 },
-      { x: box.x + box.width / 2, y: area.y + area.height + 40 },
-      14,
-    );
-    await checkHandle("peek");
-    await saveScreenshot(page, testInfo, "e-sheet-peek");
+    // The canvas draws the framed 400x711 board, fully inside the canvas panel.
+    const board = (await boardInfo(page))!;
+    expect(board, `${label}: board frame is drawn`).not.toBeNull();
+    expect({ x: board.x, y: board.y, width: board.width, height: board.height }).toEqual({
+      x: 0,
+      y: 0,
+      width: DESIGN_WIDTH,
+      height: DESIGN_HEIGHT,
+    });
+    expect(board.listening, "board does not catch taps").toBe(false);
+    expect(board.zIndex, "board is beneath every piece").toBe(0);
+    expect(board.client.x).toBeGreaterThanOrEqual(-0.5);
+    expect(board.client.y).toBeGreaterThanOrEqual(-0.5);
+    expect(board.client.x + board.client.width).toBeLessThanOrEqual(board.stage.width + 0.5);
+    expect(board.client.y + board.client.height).toBeLessThanOrEqual(board.stage.height + 0.5);
+    // ...and the board touches the panel on at least one axis (letterboxed fit).
+    expect(
+      Math.abs(board.client.width - board.stage.width) < 1 || Math.abs(board.client.height - board.stage.height) < 1,
+      `${label}: board is fitted to the panel`,
+    ).toBe(true);
 
-    // A tap from peek opens to half again.
-    box = (await handle.boundingBox())!;
-    if (testInfo.project.use.hasTouch) await page.touchscreen.tap(box.x + box.width / 2, box.y + box.height / 2);
-    else await handle.click();
-    await checkHandle("half");
+    await saveScreenshot(page, testInfo, `e-layout-${label}`);
+  }
 
-    // The Save footer is reachable by scrolling the page with a finger.
+  test("(e) canvas and picker are docked side by side (desktop) or stacked (phone), never overlapping; the grid scrolls inside the picker", async ({
+    authedPage: page,
+    userApi,
+  }, testInfo) => {
+    // Enough extra Clothes tiles that the grid must scroll (photo-less, so no image loads).
+    for (let i = 1; i <= 20; i++) {
+      await userApi.createItem({ name: `Spare Top ${String(i).padStart(2, "0")}`, category: "Clothes", subcategory: "Tops" });
+    }
+    const phone = testInfo.project.name === "mobile";
+    await openBuilder(page);
+    await expect(addTile(page, "Spare Top 20")).toBeAttached();
+    await addPiece(page, linen, 1);
+    await addPiece(page, denim, 2);
+
+    // The removed sheet left nothing behind.
+    await expect(page.getByRole("button", { name: /^Resize picker/ })).toHaveCount(0);
+
+    if (phone) {
+      await checkLayout(page, testInfo, "phone-390x844", true);
+      await selectPiece(page, testInfo, 1);
+      await saveScreenshot(page, testInfo, "e-layout-phone-selected");
+      // Short phone.
+      await page.setViewportSize({ width: 375, height: 667 });
+      await checkLayout(page, testInfo, "phone-375x667", true);
+    } else {
+      await checkLayout(page, testInfo, "desktop-1440x900", false);
+      await selectPiece(page, testInfo, 1);
+      await saveScreenshot(page, testInfo, "e-layout-desktop-selected");
+    }
+
+    // New pieces are placed against the whole 400x711 board.
+    for (const node of await canvasNodes(page)) {
+      const box = rotatedBox(node);
+      expect(box.left).toBeGreaterThanOrEqual(-1e-6);
+      expect(box.top).toBeGreaterThanOrEqual(-1e-6);
+      expect(box.right).toBeLessThanOrEqual(DESIGN_WIDTH + 1e-6);
+      expect(box.bottom).toBeLessThanOrEqual(DESIGN_HEIGHT + 1e-6);
+    }
+
+    // The Save footer below the panels is reachable by scrolling the page.
     const save = page.getByRole("button", { name: "Save to Style Book" });
-    if (mobile) {
-      const below = (await placedRegion(page).boundingBox())!;
-      const start = { x: viewport.width / 2, y: Math.min(below.y + 20, viewport.height - 120) };
-      for (let i = 0; i < 4 && !(await isFullyAboveNav(page, save)); i++) {
-        await touchDrag(page, start, { x: start.x, y: start.y - 400 }, 16);
-        await page.waitForTimeout(400);
-      }
-      expect(await page.evaluate(() => window.scrollY), "page scrolled by touch").toBeGreaterThan(0);
+    await save.scrollIntoViewIfNeeded();
+    await expect(save).toBeInViewport();
+    if (phone) {
+      await page.evaluate(() => window.scrollTo(0, document.documentElement.scrollHeight));
+      await page.waitForTimeout(200);
       expect(await isFullyAboveNav(page, save), "Save button visible above the bottom nav").toBe(true);
       await saveScreenshot(page, testInfo, "e-save-footer");
-    } else {
-      await save.scrollIntoViewIfNeeded();
-      await expect(save).toBeInViewport();
     }
   });
 });

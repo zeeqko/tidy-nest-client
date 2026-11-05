@@ -7,6 +7,7 @@ import {
   DESIGN_HEIGHT,
   DESIGN_WIDTH,
   clampItem,
+  fitRectToScreen,
   fitToScreen,
   type Rect as LogicalRect,
 } from "../lib/canvasSpace";
@@ -39,6 +40,9 @@ export interface OutfitCanvasProps {
   /** Renders non-interactively: no dragging, selection, Transformer or
    *  toolbar, and the page may scroll over it (used by Look detail). */
   readOnly?: boolean;
+  /** Logical-space rect to fit into the container instead of the whole
+   *  400x711 space. Read-only only (ignored when interactive). */
+  viewRect?: LogicalRect;
   /** Pixels at the bottom of the stage covered by the page's picker sheet. */
   visibleBottomInset?: number;
   /** Receives the logical-space rect visible above `visibleBottomInset`
@@ -230,6 +234,7 @@ export function OutfitCanvas({
   onCopy,
   onRemove,
   readOnly = false,
+  viewRect,
   visibleBottomInset = 0,
   onVisibleRectChange,
 }: OutfitCanvasProps) {
@@ -261,7 +266,8 @@ export function OutfitCanvas({
     return () => observer.disconnect();
   }, []);
 
-  const fit = fitToScreen(stageSize);
+  const fit =
+    readOnly && viewRect ? fitRectToScreen(stageSize, viewRect) : fitToScreen(stageSize);
   const layout: StageLayout = { ...stageSize, ...fit };
   const isMeasured = stageSize.width > 0 && stageSize.height > 0 && fit.scale > 0;
 

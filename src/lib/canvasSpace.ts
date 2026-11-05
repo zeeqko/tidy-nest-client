@@ -28,6 +28,23 @@ export function fitToScreen(viewport: { width: number; height: number }): {
   };
 }
 
+/** Like `fitToScreen`, but fits an arbitrary logical `rect` into the viewport
+ *  (uniform scale, centred). A zero/negative-size rect falls back to the whole
+ *  design space. The offsets position the logical origin, so a logical point
+ *  maps to `point * scale + offset`. */
+export function fitRectToScreen(
+  viewport: { width: number; height: number },
+  rect: Rect,
+): { scale: number; offsetX: number; offsetY: number } {
+  if (!(rect.width > 0) || !(rect.height > 0)) return fitToScreen(viewport);
+  const scale = Math.max(0, Math.min(viewport.width / rect.width, viewport.height / rect.height));
+  return {
+    scale,
+    offsetX: (viewport.width - rect.width * scale) / 2 - rect.x * scale,
+    offsetY: (viewport.height - rect.height * scale) / 2 - rect.y * scale,
+  };
+}
+
 function clampAxis(center: number, half: number, space: number): number {
   if (half * 2 >= space) return space / 2;
   return Math.min(Math.max(center, half), space - half);

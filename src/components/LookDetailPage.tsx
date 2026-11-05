@@ -8,6 +8,10 @@ import { useLook } from "../hooks/useLook";
 import { deleteLook } from "../api/looks";
 import { refreshLooksBounded } from "../hooks/useLooks";
 import { toPlacedItems } from "../lib/lookPlacements";
+import { lookBounds } from "../lib/canvasSpace";
+
+// The read-only canvas never calls these; stable module-level no-ops.
+const noop = () => {};
 
 /** Occasion badge treatment lifted from `LookCard`'s thumbnail overlay,
  *  minus the absolute positioning that only makes sense pinned over an
@@ -91,6 +95,10 @@ export function LookDetailPage() {
 
   const pieceCount = look.items.length;
   const placedItems = toPlacedItems(look.items);
+  // Crop to the pieces' bounding box (+24 padding). An empty look has no
+  // bounds, so keep the previous 4:5 frame to hold the empty-state message.
+  const viewRect = lookBounds(placedItems, 24);
+  const hasView = placedItems.length > 0 && viewRect.width > 0 && viewRect.height > 0;
 
   return (
     <div className="w-full px-5 pt-2 pb-28 sm:px-10 sm:pb-10">
@@ -138,7 +146,24 @@ export function LookDetailPage() {
         </div>
 
         <div className="w-full sm:max-w-[36rem] lg:w-[clamp(26rem,45%,44rem)] lg:max-w-none">
-          <OutfitCanvas readOnly items={placedItems} />
+          {/* Explicit height (the canvas fills its parent): column width x the
+              view rect's aspect, capped; the canvas letterboxes inside. */}
+          <div
+            className="max-h-[70dvh] min-h-[16rem] w-full"
+            style={{ aspectRatio: hasView ? `${viewRect.width} / ${viewRect.height}` : "4 / 5" }}
+          >
+            <OutfitCanvas
+              readOnly
+              items={placedItems}
+              viewRect={hasView ? viewRect : undefined}
+              selectedId={null}
+              onSelect={noop}
+              onChangeTransform={noop}
+              onReorder={noop}
+              onCopy={noop}
+              onRemove={noop}
+            />
+          </div>
         </div>
 
         <div className="flex w-full gap-2.5 sm:hidden">

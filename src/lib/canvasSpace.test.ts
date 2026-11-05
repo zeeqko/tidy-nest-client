@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { clampItem, fitToScreen, lookBounds } from "./canvasSpace";
+import { clampItem, fitRectToScreen, fitToScreen, lookBounds } from "./canvasSpace";
 
 describe("fitToScreen", () => {
   it("fits a phone viewport by width", () => {
@@ -96,5 +96,41 @@ describe("lookBounds", () => {
   });
   it("returns a zero rect for no items", () => {
     expect(lookBounds([])).toEqual({ x: 0, y: 0, width: 0, height: 0 });
+  });
+});
+
+describe("fitRectToScreen", () => {
+  const rect = { x: 100, y: 200, width: 200, height: 100 };
+
+  it("fits a wide rect by width in a taller viewport, centred vertically", () => {
+    const r = fitRectToScreen({ width: 400, height: 400 }, rect);
+    expect(r.scale).toBe(2);
+    // rect left edge lands at x=0, rect is vertically centred
+    expect(100 * r.scale + r.offsetX).toBeCloseTo(0);
+    expect(200 * r.scale + r.offsetY).toBeCloseTo(100);
+  });
+
+  it("fits by height in a wider viewport, centred horizontally", () => {
+    const r = fitRectToScreen({ width: 800, height: 100 }, rect);
+    expect(r.scale).toBe(1);
+    expect(100 * r.scale + r.offsetX).toBeCloseTo(300);
+    expect(200 * r.scale + r.offsetY).toBeCloseTo(0);
+  });
+
+  it("supports a rect partly outside the design space", () => {
+    const r = fitRectToScreen({ width: 100, height: 100 }, { x: -50, y: -50, width: 100, height: 100 });
+    expect(r.scale).toBe(1);
+    expect(r.offsetX).toBe(50);
+    expect(r.offsetY).toBe(50);
+  });
+
+  it("falls back to the whole design space for a zero-size rect", () => {
+    const vp = { width: 390, height: 844 };
+    expect(fitRectToScreen(vp, { x: 0, y: 0, width: 0, height: 0 })).toEqual(fitToScreen(vp));
+    expect(fitRectToScreen(vp, { x: 5, y: 5, width: 10, height: 0 })).toEqual(fitToScreen(vp));
+  });
+
+  it("yields zero scale for a degenerate viewport", () => {
+    expect(fitRectToScreen({ width: -10, height: 500 }, rect).scale).toBe(0);
   });
 });

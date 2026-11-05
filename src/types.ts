@@ -1,4 +1,5 @@
 import type { LucideIcon } from "lucide-react";
+import type { StylebookGroup } from "./lib/placement";
 
 export interface Chip {
   label: string;
@@ -63,5 +64,6 @@ export interface Category {
   /** Lucide icon name chosen in the category editor (used when no image exists). */
   iconName?: string;
   colour?: string;
+  stylebookGroup?: StylebookGroup;
   subcategories: { id: string; name: string }[];
 }

@@ -1,3 +1,4 @@
+import type { StylebookGroup } from "../lib/placement";
 import { request } from "./http";
 
 /** Category as served by the Go backend. */
@@ -20,12 +21,16 @@ export interface ApiCategory {
   locations: string[];
   /** Whether items in this category track an opened-on/expiry date by default (e.g. Food, Makeup). */
   reminderOnExpiry: boolean;
+  /** Stylebook picker group; null = hidden from the picker. */
+  stylebookGroup: StylebookGroup | null;
 }
 
 export interface CategoryPayload {
   name: string;
   icon?: string;
   colour?: string;
+  /** Omit to leave unchanged (update) / use the name default (create); "" = hidden. */
+  stylebookGroup?: StylebookGroup | "";
 }
 
 export interface ApiTag {

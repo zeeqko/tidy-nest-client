@@ -13,6 +13,7 @@ import {
 import { illustrationIcons } from "../data/categories";
 import { categoryIconOptions, defaultCategoryColour } from "../data/categoryIcons";
 import { tagChip } from "../data/presentation";
+import { groupPayloadValue, type GroupSelection } from "../lib/categoryGroup";
 import type { RefreshScope } from "../types";
 import { CategoryBadge } from "./CategoryBadge";
 import { ConfirmDeleteModal } from "./ConfirmDeleteModal";
@@ -93,6 +94,12 @@ export function EditCategoryModal({ category, onClose, onSaved }: EditCategoryMo
   const [tagChips, setTagChips] = useState<ChipState[]>(
     () => category?.tags?.map((tag) => ({ id: tag.id, name: tag.name, colour: tag.colour })) ?? [],
   );
+  // Edit seeds with the stored group; create seeds with "auto" (backend picks
+  // from the name). Nothing is sent unless the user actually changes it.
+  const [groupSelection, setGroupSelection] = useState<GroupSelection>(
+    isEdit ? (category?.stylebookGroup ?? "hidden") : "auto",
+  );
+  const [groupTouched, setGroupTouched] = useState(false);
   const [confirmingDelete, setConfirmingDelete] = useState(false);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -137,7 +144,13 @@ export function EditCategoryModal({ category, onClose, onSaved }: EditCategoryMo
     setSaving(true);
     setError(null);
     try {
-      const payload = { name: name.trim(), icon, colour };
+      const stylebookGroup = groupPayloadValue(groupSelection, groupTouched);
+      const payload = {
+        name: name.trim(),
+        icon,
+        colour,
+        ...(stylebookGroup !== undefined && { stylebookGroup }),
+      };
       let categoryId: number;
       // Renaming or removing subcategories changes what items display.
       let itemsAffected = false;
@@ -309,6 +322,25 @@ export function EditCategoryModal({ category, onClose, onSaved }: EditCategoryMo
             })}
           </div>
         </div>
+
+        <label className="flex w-full flex-col gap-1.5">
+          <FieldLabel>Stylebook group</FieldLabel>
+          <select
+            value={groupSelection}
+            onChange={(e) => {
+              setGroupSelection(e.target.value as GroupSelection);
+              setGroupTouched(true);
+            }}
+            className="w-full rounded-full border border-cute-border bg-cute-surface-alt px-[1.375rem] py-4 font-body text-sm text-cute-text outline-none transition focus:border-cute-primary"
+          >
+            {!isEdit && <option value="auto">Automatic (based on name)</option>}
+            <option value="clothes">Clothes</option>
+            <option value="shoes">Shoes</option>
+            <option value="accessories">Accessories</option>
+            <option value="bags">Bags</option>
+            <option value="hidden">Hidden from Stylebook</option>
+          </select>
+        </label>
 
         <div className="flex w-full flex-col gap-2.5">
           <FieldLabel>Subcategories</FieldLabel>

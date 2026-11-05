@@ -28,6 +28,7 @@ export function toUiCategory(category: ApiCategory): Category {
     iconSrc: category.icon ? illustrationIcons[category.icon] : undefined,
     iconName: category.icon && !illustrationIcons[category.icon] ? category.icon : undefined,
     colour: category.colour ?? undefined,
+    stylebookGroup: category.stylebookGroup ?? undefined,
     subcategories: category.subCategories.map((sc) => ({ id: String(sc.id), name: sc.name })),
   };
 }

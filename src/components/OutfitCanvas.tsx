@@ -19,13 +19,6 @@ import {
  *  rotating the device only changes that scale/offset, never item positions. */
 const MIN_SIZE = 24;
 
-/** Untouched footprint of a newly-added placement in the current
- *  `OutfitBuilderPage.addItem`. T4's aspect-ratio fit below
- *  (`PlacedNode`'s image-load effect) uses it to recognise a placement the
- *  user hasn't resized yet. Exported (rather than defined in the page) to
- *  avoid a circular runtime import. */
-export const DEFAULT_SIZE = 180;
-
 /** Dotted backdrop drawn behind the (transparent) Stage, across the whole
  *  stage area including any letterbox margins. */
 const DOTTED_BACKGROUND = {
@@ -125,51 +118,10 @@ function PlacedNode({
   onChangeTransform,
   registerRef,
 }: PlacedNodeProps) {
+  // New placements are sized to their image's real aspect by the builder
+  // before they are added, so the canvas draws the image into the stored box
+  // as-is.
   const image = useHtmlImage(item.cutoutURL ?? item.imageURL);
-
-  // Latest item / callback, read (not depended on) by the image-load fit
-  // effect below — it must only re-run when a *new* image object finishes
-  // loading, never on every drag/resize/reorder that changes `item`.
-  const itemRef = useRef(item);
-  itemRef.current = item;
-  const onChangeTransformRef = useRef(onChangeTransform);
-  onChangeTransformRef.current = onChangeTransform;
-
-  // T4: fit a placement to its image's real aspect ratio once that image
-  // loads, so a non-square photo or cutout doesn't render stretched into the
-  // DEFAULT_SIZE square.
-  useEffect(() => {
-    if (readOnly || !image) return;
-    const naturalWidth = image.naturalWidth;
-    const naturalHeight = image.naturalHeight;
-    if (!naturalWidth || !naturalHeight) return;
-
-    const current = itemRef.current;
-    // Only reshape a placement still at its untouched default footprint;
-    // once resized (by the user or an earlier run of this effect) this is a
-    // permanent no-op for that placement.
-    if (current.width !== DEFAULT_SIZE || current.height !== DEFAULT_SIZE) return;
-
-    const longestSide = Math.max(current.width, current.height);
-    const aspect = naturalWidth / naturalHeight;
-    const width = aspect >= 1 ? longestSide : longestSide * aspect;
-    const height = aspect >= 1 ? longestSide / aspect : longestSide;
-
-    if (Math.abs(width - current.width) < 0.5 && Math.abs(height - current.height) < 0.5) return;
-
-    // Preserve the centre so the piece doesn't jump when it reshapes.
-    const centerX = current.x + current.width / 2;
-    const centerY = current.y + current.height / 2;
-    onChangeTransformRef.current({
-      x: centerX - width / 2,
-      y: centerY - height / 2,
-      width,
-      height,
-      rotation: current.rotation,
-    });
-    // Deliberately keyed only on `image` and `readOnly` — see the refs above.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [image, readOnly]);
 
   /** Clamp a logical placement into the design space, move the node to the
    *  clamped centre (so it never lingers outside even if the resulting props

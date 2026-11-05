@@ -249,12 +249,34 @@ export async function addPiece(page: Page, name: string, expectedTotal: number) 
   await expect(countBadge(page, name)).toBeVisible();
 }
 
+/** The interactive canvas container (the ✕ and the pill are overlaid in it). */
+export const outfitCanvas = (page: Page) => page.getByTestId("outfit-canvas");
+/** The selected piece's red remove ✕ (scoped to the canvas: the picker's
+ *  count badges are also named "Remove last …"). */
+export const removeCross = (page: Page) => outfitCanvas(page).getByRole("button", { name: /^Remove / });
+/** The selection pill (send to back / bring to front / copy). */
+export const selectionPill = (page: Page) => outfitCanvas(page).getByRole("toolbar", { name: /actions$/ });
+
+/** Viewport rect of the placed node at `nodeIndex` (layer order): its rotated, axis-aligned bounding box, stroke excluded. */
+export async function nodeScreenRect(page: Page, nodeIndex: number, stageIndex = 0) {
+  return page.evaluate(
+    ([si, ni]) => {
+      const stage = (window as any).Konva.stages[si];
+      const nodes = stage.getLayers()[0].getChildren().filter((n: any) => n.getClassName() !== "Transformer" && !n.hasName("board"));
+      const r = nodes[ni].getClientRect({ skipStroke: true, skipShadow: true });
+      const rect = stage.container().getBoundingClientRect();
+      return { x: rect.left + r.x, y: rect.top + r.y, width: r.width, height: r.height };
+    },
+    [stageIndex, nodeIndex] as const,
+  );
+}
+
 /** Selects the placed piece at `nodeIndex` (layer order) with a click/tap and returns its toolbar. */
 export async function selectPiece(page: Page, testInfo: TestInfo, nodeIndex: number): Promise<Locator> {
   const centre = await nodeScreenCenter(page, nodeIndex);
   if (testInfo.project.use.hasTouch) await page.touchscreen.tap(centre.x, centre.y);
   else await page.mouse.click(centre.x, centre.y);
-  const toolbar = page.getByRole("toolbar", { name: /actions$/ });
+  const toolbar = selectionPill(page);
   await expect(toolbar).toBeVisible();
   return toolbar;
 }

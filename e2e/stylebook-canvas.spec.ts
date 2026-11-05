@@ -27,11 +27,13 @@ import {
   pinch,
   pointerDrag,
   rotatedBox,
+  removeCross,
   rotaterPoint,
   saveNewLook,
   saveScreenshot,
   selectGroup,
   selectPiece,
+  selectionPill,
   stageTransform,
   touchScrollGesture,
   type CanvasNode,
@@ -59,7 +61,7 @@ function expectSameNodes(actual: CanvasNode[], expected: CanvasNode[]) {
 }
 
 test.describe("picker tap-to-add", () => {
-  test("(a) each tap adds exactly one copy; Undo, the check badge and the toolbar's Remove remove only one piece", async ({
+  test("(a) each tap adds exactly one copy; Undo, the check badge and the selected piece's ✕ remove only one piece", async ({
     authedPage: page,
   }, testInfo) => {
     await openBuilder(page);
@@ -97,14 +99,15 @@ test.describe("picker tap-to-add", () => {
     await expect(countBadge(page, denim)).toHaveAccessibleName(`Remove last ${denim} from canvas (1 on canvas)`);
     expectSameNodes(await canvasNodes(page), withJacket);
 
-    // The canvas toolbar's Remove deletes just the selected piece; its tile
-    // loses the check badge and the other piece stays where it was.
-    const toolbar = await selectPiece(page, testInfo, 1);
-    const label = (await toolbar.getAttribute("aria-label"))!;
-    const removed = label.replace(/ actions$/, "");
+    // The selected piece's ✕ deletes just that piece; its tile loses the
+    // check badge and the other piece stays where it was.
+    await selectPiece(page, testInfo, 1);
+    const cross = removeCross(page);
+    await expect(cross).toHaveCount(1);
+    const removed = (await cross.getAttribute("aria-label"))!.replace(/^Remove /, "");
     const kept = removed === linen ? denim : linen;
     expect([linen, denim]).toContain(removed);
-    await toolbar.getByRole("button", { name: `Remove ${removed}` }).click();
+    await cross.click();
     await expect.poll(async () => (await canvasNodes(page)).length).toBe(1);
     await expect(countBadge(page, removed)).toHaveCount(0);
     await expect(countBadge(page, kept)).toHaveAccessibleName(`Remove last ${kept} from canvas (1 on canvas)`);
@@ -286,7 +289,7 @@ test.describe("fixed canvas", () => {
     // Select it with a tap/click.
     if (testInfo.project.use.hasTouch) await page.touchscreen.tap(centre1.x, centre1.y);
     else await page.mouse.click(centre1.x, centre1.y);
-    await expect(page.getByRole("toolbar", { name: /actions$/ })).toBeVisible();
+    await expect(selectionPill(page)).toBeVisible();
     const rotater = await rotaterPoint(page);
     const radius = Math.hypot(rotater.x - centre1.x, rotater.y - centre1.y);
     await pointerDrag(page, testInfo, rotater, { x: centre1.x + radius * Math.SQRT1_2, y: centre1.y - radius * Math.SQRT1_2 }, 16);
@@ -450,9 +453,9 @@ test.describe("canvas toolbar", () => {
 
     const centre = await nodeScreenCenter(page, 0);
     await page.mouse.click(centre.x, centre.y);
-    const toolbar = page.getByRole("toolbar", { name: `${linen} actions` });
+    const toolbar = selectionPill(page);
     await expect(toolbar).toBeVisible();
-    await toolbar.getByRole("button", { name: `Copy ${linen}` }).click();
+    await toolbar.getByRole("button", { name: "Copy", exact: true }).click();
     await expect.poll(async () => (await canvasNodes(page)).length).toBe(2);
     // Let the copy's image load: before the fix this swapped the copy's node
     // and left the Transformer on the destroyed one.

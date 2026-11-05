@@ -24,7 +24,8 @@ import { autoLookName } from "../lib/lookName";
 import type { OrganizingItem } from "../types";
 
 /** Nothing overlays the canvas, so new pieces are placed against the whole
- *  400x711 logical space. */
+ *  400x711 base space (always on screen: the canvas view contains it). Pieces
+ *  can then be moved anywhere in the panel, outside that base space too. */
 const PLACEMENT_AREA: Rect = { x: 0, y: 0, width: DESIGN_WIDTH, height: DESIGN_HEIGHT };
 
 /** Height of the canvas + picker panels: the viewport minus the page chrome
@@ -65,9 +66,10 @@ const HEADER_ICON_BUTTON =
   "flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-cute-surface-alt text-cute-text transition hover:brightness-95 disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:brightness-100";
 
 /** A single inventory item placed into the look-in-progress, shaped like the
- *  eventual `POST /api/looks` payload (`itemId` + transform, in the 400x711
- *  logical canvas space) plus just enough source-item data to render it
- *  (name, photo, icon fallback) without a second lookup. */
+ *  eventual `POST /api/looks` payload (`itemId` + transform, in the logical
+ *  units of the 400x711 canvas space; may lie outside it) plus just enough
+ *  source-item data to render it (name, photo, icon fallback) without a
+ *  second lookup. */
 export interface PlacedItem {
   /** Stable per-placement id (distinct from `itemId`, which repeats when the
    *  same inventory item is placed more than once) — every selection,
@@ -246,6 +248,10 @@ export function OutfitBuilderPage() {
   // ref (rather than just depending on `look`) keeps a later refetch from
   // clobbering in-progress edits.
   const prefilledRef = useRef(false);
+  // Bumped when a saved look is loaded, so the canvas re-fits its view to
+  // the loaded pieces (they may lie outside what this panel shows by default,
+  // e.g. a look made on a wide desktop opened on a phone).
+  const [fitKey, setFitKey] = useState(0);
   useEffect(() => {
     if (!look || prefilledRef.current) return;
     prefilledRef.current = true;
@@ -254,6 +260,7 @@ export function OutfitBuilderPage() {
     setOccasion(look.occasion);
     // Not routed through `addItem`: loading is not an edit (no history).
     dispatch({ type: "load", items: toPlacedItems(look.items) });
+    setFitKey((key) => key + 1);
     // Saved pieces whose item has a photo but no cutout yet get one too (the
     // queue skips items with a cutout and dedupes repeats).
     for (const item of look.items) {
@@ -555,14 +562,15 @@ export function OutfitBuilderPage() {
                 items={state.items}
                 selectedId={state.selectedId}
                 onSelect={(placementId) => dispatch({ type: "select", id: placementId })}
-                onChangeTransform={(placementId, patch: TransformPatch) =>
-                  dispatch({ type: "update", id: placementId, patch })
+                fitKey={fitKey}
+                onChangeTransform={(placementId, patch: TransformPatch, bounds) =>
+                  dispatch({ type: "update", id: placementId, patch, bounds })
                 }
                 onReorder={(placementId, direction) =>
                   dispatch({ type: "reorder", id: placementId, direction })
                 }
-                onCopy={(placementId) =>
-                  dispatch({ type: "copy", id: placementId, newId: crypto.randomUUID() })
+                onCopy={(placementId, bounds) =>
+                  dispatch({ type: "copy", id: placementId, newId: crypto.randomUUID(), bounds })
                 }
                 onRemove={(placementId) => dispatch({ type: "remove", id: placementId })}
               />

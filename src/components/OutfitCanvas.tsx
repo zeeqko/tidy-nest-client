@@ -7,18 +7,23 @@ import {
   clampItem,
   fitRectToScreen,
   fitToScreen,
+  fitToScreenFor,
   rotatedBounds,
+  visibleLogicalRect,
   type Rect as LogicalRect,
+  type StageFit,
 } from "../lib/canvasSpace";
 import { CROSS_HIT_SIZE, crossButtonPosition } from "../lib/crossButton";
 import { shouldDeleteOnKey } from "../lib/canvasKeyboard";
 
-/** Every placed item's (x, y, width, height) lives in the fixed
- *  DESIGN_WIDTH x DESIGN_HEIGHT (400x711, 9:16) logical space from
- *  `canvasSpace`. The Stage itself fills its container (full-screen in the
- *  builder); `fitToScreen` maps the logical space into it with a uniform
- *  scale plus a centring offset (letterboxed). Resizing the window or
- *  rotating the device only changes that scale/offset, never item positions. */
+/** Every placed item's (x, y, width, height) is in the logical units of the
+ *  DESIGN_WIDTH x DESIGN_HEIGHT (400x711, 9:16) base space from
+ *  `canvasSpace`, but may lie outside it (negative or beyond 400/711): pieces
+ *  can use the whole panel. The Stage itself fills its container;
+ *  `fitToScreenFor` maps logical space into it with a uniform scale plus a
+ *  centring offset (the contain-fit of the base space, zoomed out only when
+ *  the pieces would not all be visible). Resizing the window or rotating the
+ *  device only changes that scale/offset, never item positions. */
 const MIN_SIZE = 24;
 
 /** Pointer travel (px) before a press on a piece becomes a drag, so a tap
@@ -53,9 +58,13 @@ export interface OutfitCanvasProps {
   items: PlacedItem[];
   selectedId: string | null;
   onSelect(id: string | null): void;
-  onChangeTransform(id: string, patch: TransformPatch): void;
+  /** `bounds`: the panel's visible logical rect at the time of the edit (the
+   *  patch is already clamped into it; pass it on so the editor clamps with
+   *  the same rect). */
+  onChangeTransform(id: string, patch: TransformPatch, bounds: LogicalRect): void;
   onReorder(id: string, direction: "front" | "back"): void;
-  onCopy(id: string): void;
+  /** `bounds`: the panel's visible logical rect, to clamp the offset copy into. */
+  onCopy(id: string, bounds: LogicalRect): void;
   onRemove(id: string): void;
   /** Renders non-interactively: no dragging, selection, Transformer, remove
    *  ✕, toolbar pill or Delete key, and the page may scroll over it (used by
@@ -64,14 +73,18 @@ export interface OutfitCanvasProps {
   /** Logical-space rect to fit into the container instead of the whole
    *  400x711 space. Read-only only (ignored when interactive). */
   viewRect?: LogicalRect;
+  /** Interactive only: bump to re-evaluate the view (`fitToScreenFor` over
+   *  the current pieces) — the builder does so when it loads a saved look.
+   *  Otherwise the view only changes when the stage size changes, never
+   *  while pieces are dragged, transformed, added or undone. */
+  fitKey?: number;
 }
 
-interface StageLayout {
+interface StageLayout extends StageFit {
   width: number;
   height: number;
-  scale: number;
-  offsetX: number;
-  offsetY: number;
+  /** The panel's visible logical rect: pieces are clamped into it. */
+  bounds: LogicalRect;
 }
 
 /** Loads a same-origin image URL into an HTMLImageElement for Konva to draw,
@@ -134,16 +147,16 @@ function PlacedNode({
   // the fallback fill instead.
   const image = useHtmlImage(item.cutoutURL ?? item.imageURL);
 
-  /** Clamp a logical placement into the design space, move the node to the
+  /** Clamp a logical placement into the panel's visible area, move the node to the
    *  clamped centre (so it never lingers outside even if the resulting props
    *  equal the previous ones and React skips the update), and emit it. */
   const commitClamped = (node: Konva.Node, placement: TransformPatch) => {
-    const clamped = clampItem(placement);
+    const clamped = clampItem(placement, layout.bounds);
     node.position({ x: clamped.x + clamped.width / 2, y: clamped.y + clamped.height / 2 });
     onChangeTransform(clamped);
   };
 
-  // Keep the item inside the design space while it is being dragged. Konva
+  // Keep the item inside the panel's visible area while it is being dragged. Konva
   // passes/expects the node's absolute position (its centre, because of the
   // centre offset), i.e. logical centre * scale + stage offset.
   const dragBoundFunc = (pos: { x: number; y: number }) => {
@@ -151,13 +164,16 @@ function PlacedNode({
     if (scale <= 0) return pos;
     const centerX = (pos.x - offsetX) / scale;
     const centerY = (pos.y - offsetY) / scale;
-    const clamped = clampItem({
-      x: centerX - item.width / 2,
-      y: centerY - item.height / 2,
-      width: item.width,
-      height: item.height,
-      rotation: item.rotation,
-    });
+    const clamped = clampItem(
+      {
+        x: centerX - item.width / 2,
+        y: centerY - item.height / 2,
+        width: item.width,
+        height: item.height,
+        rotation: item.rotation,
+      },
+      layout.bounds,
+    );
     return {
       x: (clamped.x + item.width / 2) * scale + offsetX,
       y: (clamped.y + item.height / 2) * scale + offsetY,
@@ -241,12 +257,14 @@ const PILL_BUTTON =
 
 /** Fixed arrange canvas for the Outfit Builder: a controlled Konva surface
  *  over the placed items and selection owned by the page. The Stage fills
- *  its container; the 400x711 logical space is fitted into it with
- *  `fitToScreen` (letterboxed) and is not drawn: pieces are kept inside it,
- *  so on a panel wider or taller than 9:16 they stop at an invisible edge
- *  inset from the panel's sides. Items are selected by tap, moved
+ *  its container; the 400x711 base space is contain-fitted into it
+ *  (`fitToScreenFor`, zoomed out only to show pieces outside the panel) and
+ *  is not drawn. Pieces may use the whole panel: each one's rotated bounding
+ *  box is kept inside the panel's visible logical rect (`visibleLogicalRect`
+ *  of the current view). The view is re-evaluated only when the stage size
+ *  changes or `fitKey` is bumped. Items are selected by tap, moved
  *  by one-finger / mouse drag, and resized/rotated with the Transformer handles of the
- *  selected item; every move is clamped into the logical space. There is
+ *  selected item; every move is clamped into the visible rect. There is
  *  deliberately no wheel, pinch-to-pan or drag-on-empty-space handling:
  *  dragging empty space does nothing (and `touch-action: none` stops it
  *  scrolling the page); tapping empty space deselects. The selected piece
@@ -263,6 +281,7 @@ export function OutfitCanvas({
   onRemove,
   readOnly = false,
   viewRect,
+  fitKey = 0,
 }: OutfitCanvasProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const trRef = useRef<Konva.Transformer>(null);
@@ -309,9 +328,23 @@ export function OutfitCanvas({
     return () => observer.disconnect();
   }, []);
 
-  const fit =
-    readOnly && viewRect ? fitRectToScreen(stageSize, viewRect) : fitToScreen(stageSize);
-  const layout: StageLayout = { ...stageSize, ...fit };
+  // Interactive view: evaluated from the pieces only when the stage size or
+  // `fitKey` changes (adjusting state while rendering), so it never moves
+  // under the finger during a drag/transform/add/undo.
+  const viewKey = `${stageSize.width}x${stageSize.height}#${fitKey}`;
+  const [view, setView] = useState<{ key: string; fit: StageFit } | null>(null);
+  let interactiveFit = view?.fit ?? fitToScreen(stageSize);
+  if (!readOnly && view?.key !== viewKey) {
+    interactiveFit = fitToScreenFor(stageSize, items.length > 0 ? rotatedBounds(items) : null);
+    setView({ key: viewKey, fit: interactiveFit });
+  }
+  const fit = readOnly
+    ? viewRect
+      ? fitRectToScreen(stageSize, viewRect)
+      : fitToScreen(stageSize)
+    : interactiveFit;
+  const bounds = visibleLogicalRect(stageSize, fit);
+  const layout: StageLayout = { ...stageSize, ...fit, bounds };
   const isMeasured = stageSize.width > 0 && stageSize.height > 0 && fit.scale > 0;
 
   const selectedItem =
@@ -443,7 +476,7 @@ export function OutfitCanvas({
                 readOnly={readOnly}
                 layout={layout}
                 onSelect={() => onSelect(item.id)}
-                onChangeTransform={(patch) => onChangeTransform(item.id, patch)}
+                onChangeTransform={(patch) => onChangeTransform(item.id, patch, bounds)}
                 onGestureChange={(active) => setGestureId(active ? item.id : null)}
                 registerRef={(node) => {
                   if (node) nodeRefs.current.set(item.id, node);
@@ -529,7 +562,7 @@ export function OutfitCanvas({
           </button>
           <button
             type="button"
-            onClick={() => onCopy(selectedItem.id)}
+            onClick={() => onCopy(selectedItem.id, bounds)}
             aria-label="Copy"
             className={PILL_BUTTON}
           >

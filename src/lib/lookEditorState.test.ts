@@ -1,6 +1,5 @@
 import { describe, expect, it } from "vitest";
 import type { PlacedItem } from "../components/OutfitBuilderPage";
-import { DESIGN_WIDTH } from "./canvasSpace";
 import { editorReducer, initialEditorState, type EditorAction, type EditorState } from "./lookEditorState";
 
 const icon = (() => null) as unknown as PlacedItem["icon"];
@@ -98,11 +97,28 @@ describe("editorReducer", () => {
     expect(s.items.map((i) => i.id)).toEqual(["a"]);
   });
 
-  it("update is clamped into the space", () => {
+  // The panel's visible logical rect on a wide desktop panel: the base
+  // 400x711 space plus side margins.
+  const panel = { x: -210, y: 0, width: 820, height: 711 };
+
+  it("update is clamped into the given bounds (the panel's visible rect)", () => {
     let s = initialEditorState([mk("a")]);
-    s = editorReducer(s, { type: "update", id: "a", patch: { x: 9999 } });
-    expect(s.items[0].x).toBe(DESIGN_WIDTH - 50);
+    s = editorReducer(s, { type: "update", id: "a", patch: { x: 9999 }, bounds: panel });
+    expect(s.items[0].x).toBe(610 - 50);
     expect(s.past).toHaveLength(1);
+    s = editorReducer(s, { type: "update", id: "a", patch: { x: -9999, y: -5 }, bounds: panel });
+    expect(s.items[0]).toMatchObject({ x: -210, y: 0 });
+  });
+
+  it("update keeps coordinates outside the base 400x711 space (no re-clamp to the old rect)", () => {
+    let s = initialEditorState([mk("a")]);
+    s = editorReducer(s, { type: "update", id: "a", patch: { x: -150, y: 20 }, bounds: panel });
+    expect(s.items[0]).toMatchObject({ x: -150, y: 20 });
+    s = editorReducer(s, { type: "update", id: "a", patch: { x: 520 }, bounds: panel });
+    expect(s.items[0].x).toBe(520);
+    // Without bounds the patch is stored exactly as given.
+    s = editorReducer(s, { type: "update", id: "a", patch: { x: -400, y: 900 } });
+    expect(s.items[0]).toMatchObject({ x: -400, y: 900 });
   });
 
   it("update that changes nothing returns the same state and pushes no history", () => {
@@ -118,8 +134,18 @@ describe("editorReducer", () => {
   });
 
   it("update clamped back onto the current position is a no-op", () => {
-    const s = initialEditorState([mk("a", { x: DESIGN_WIDTH - 50 })]);
-    expect(editorReducer(s, { type: "update", id: "a", patch: { x: 9999 } })).toBe(s);
+    const s = initialEditorState([mk("a", { x: 610 - 50 })]);
+    expect(editorReducer(s, { type: "update", id: "a", patch: { x: 9999 }, bounds: panel })).toBe(s);
+  });
+
+  it("copy is clamped into the given bounds, and may sit outside the base space", () => {
+    const s = initialEditorState([mk("a", { x: 550, y: 650 }), mk("b", { x: -200, y: 10 })]);
+    const atEdge = editorReducer(s, { type: "copy", id: "a", newId: "a2", bounds: panel });
+    expect(atEdge.items.find((i) => i.id === "a2")).toMatchObject({ x: 560, y: 661 });
+    const inMargin = editorReducer(s, { type: "copy", id: "b", newId: "b2", bounds: panel });
+    expect(inMargin.items.find((i) => i.id === "b2")).toMatchObject({ x: -184, y: 26 });
+    const unbounded = editorReducer(s, { type: "copy", id: "a", newId: "a3" });
+    expect(unbounded.items.find((i) => i.id === "a3")).toMatchObject({ x: 566, y: 666 });
   });
 
   it("a real change to any single transform field still commits", () => {

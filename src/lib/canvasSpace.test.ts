@@ -1,5 +1,16 @@
 import { describe, expect, it } from "vitest";
-import { clampItem, fitRectToScreen, fitToScreen, lookBounds, rotatedBounds } from "./canvasSpace";
+import {
+  DESIGN_RECT,
+  VIEW_PADDING,
+  clampItem,
+  fitRectToScreen,
+  fitToScreen,
+  fitToScreenFor,
+  lookBounds,
+  rotatedBounds,
+  visibleLogicalRect,
+  type Rect,
+} from "./canvasSpace";
 
 describe("fitToScreen", () => {
   it("fits a phone viewport by width", () => {
@@ -195,6 +206,165 @@ describe("rotatedBounds", () => {
       expect(r.y).toBeCloseTo(base.y);
       expect(r.width).toBeCloseTo(base.width);
       expect(r.height).toBeCloseTo(base.height);
+    }
+  });
+});
+
+describe("clampItem with explicit bounds", () => {
+  const panel = { x: -200, y: -10, width: 800, height: 731 };
+
+  it("lets a piece sit in the former margins (negative / > 400 coordinates)", () => {
+    const left = { x: -150, y: 100, width: 100, height: 100, rotation: 0 };
+    expect(clampItem(left, panel)).toBe(left);
+    const right = { x: 480, y: 100, width: 100, height: 100, rotation: 0 };
+    expect(clampItem(right, panel)).toBe(right);
+  });
+
+  it("clamps to the bounds' left / right / top / bottom edges", () => {
+    expect(clampItem({ x: -900, y: 100, width: 100, height: 50, rotation: 0 }, panel).x).toBe(-200);
+    expect(clampItem({ x: 900, y: 100, width: 100, height: 50, rotation: 0 }, panel).x).toBe(500);
+    expect(clampItem({ x: 0, y: -100, width: 100, height: 50, rotation: 0 }, panel).y).toBe(-10);
+    expect(clampItem({ x: 0, y: 900, width: 100, height: 50, rotation: 0 }, panel).y).toBe(671);
+  });
+
+  it("accounts for rotation against offset bounds", () => {
+    const half = (100 * Math.SQRT2) / 2;
+    const r = clampItem({ x: -900, y: -900, width: 100, height: 100, rotation: 45 }, panel);
+    expect(r.x + 50 - half).toBeCloseTo(-200, 6);
+    expect(r.y + 50 - half).toBeCloseTo(-10, 6);
+  });
+
+  it("centres a box larger than the bounds on that axis", () => {
+    const r = clampItem({ x: 0, y: 0, width: 1000, height: 50, rotation: 0 }, panel);
+    expect(r.x + 500).toBeCloseTo(200, 6);
+    expect(r.y).toBe(0);
+  });
+
+  it("defaults to the base design rect", () => {
+    const item = { x: -30, y: 800, width: 50, height: 50, rotation: 0 };
+    expect(clampItem(item)).toEqual(clampItem(item, DESIGN_RECT));
+    expect(clampItem(item)).toMatchObject({ x: 0, y: 661 });
+  });
+});
+
+describe("visibleLogicalRect", () => {
+  it("is the base rect plus side margins on a wide viewport", () => {
+    const vp = { width: 1000, height: 711 };
+    const r = visibleLogicalRect(vp, fitToScreen(vp));
+    expect(r.x).toBeCloseTo(-300, 6);
+    expect(r.y).toBeCloseTo(0, 6);
+    expect(r.width).toBeCloseTo(1000, 6);
+    expect(r.height).toBeCloseTo(711, 6);
+  });
+
+  it("is the base rect plus top/bottom margins on a tall viewport", () => {
+    const vp = { width: 200, height: 800 };
+    const fit = fitToScreen(vp); // scale 0.5
+    const r = visibleLogicalRect(vp, fit);
+    expect(r.x).toBeCloseTo(0, 6);
+    expect(r.width).toBeCloseTo(400, 6);
+    expect(r.height).toBeCloseTo(1600, 6);
+    expect(r.y).toBeCloseTo(-(1600 - 711) / 2, 6);
+  });
+
+  it("falls back to the base rect for a degenerate fit or viewport", () => {
+    expect(visibleLogicalRect({ width: 0, height: 0 }, fitToScreen({ width: 0, height: 0 }))).toEqual(DESIGN_RECT);
+    expect(visibleLogicalRect({ width: 100, height: 100 }, { scale: 0, offsetX: 0, offsetY: 0 })).toEqual(DESIGN_RECT);
+  });
+});
+
+describe("fitToScreenFor", () => {
+  const wide = { width: 1000, height: 711 }; // visible x: -300..700
+  const tall = { width: 200, height: 800 }; // scale 0.5, visible y: -444.5..1155.5
+  const contains = (outer: Rect, inner: Rect) =>
+    inner.x >= outer.x - 1e-6 &&
+    inner.y >= outer.y - 1e-6 &&
+    inner.x + inner.width <= outer.x + outer.width + 1e-6 &&
+    inner.y + inner.height <= outer.y + outer.height + 1e-6;
+
+  it("is fitToScreen with no content", () => {
+    expect(fitToScreenFor(wide, null)).toEqual(fitToScreen(wide));
+    expect(fitToScreenFor(tall, null)).toEqual(fitToScreen(tall));
+  });
+
+  it("is fitToScreen when the content is inside the base rect or the visible margins", () => {
+    expect(fitToScreenFor(wide, { x: 10, y: 10, width: 100, height: 100 })).toEqual(fitToScreen(wide));
+    // In the wide viewport's former side margins, touching the edges.
+    expect(fitToScreenFor(wide, { x: -300, y: 0, width: 1000, height: 711 })).toEqual(fitToScreen(wide));
+    // In the tall viewport's top/bottom margins.
+    expect(fitToScreenFor(tall, { x: 0, y: -400, width: 400, height: 1500 })).toEqual(fitToScreen(tall));
+  });
+
+  it("zooms out, centred, for content beyond the left edge", () => {
+    const content = { x: -900, y: 100, width: 100, height: 100 };
+    const fit = fitToScreenFor(wide, content);
+    expect(fit.scale).toBeLessThan(fitToScreen(wide).scale);
+    // Union of base (0..400) and padded content (-912..-788) = -912..400.
+    const union = { x: -900 - VIEW_PADDING, y: 0, width: 400 + 900 + VIEW_PADDING, height: 711 };
+    expect(fit).toEqual(fitRectToScreen(wide, union));
+    const visible = visibleLogicalRect(wide, fit);
+    expect(contains(visible, content)).toBe(true);
+    expect(contains(visible, DESIGN_RECT)).toBe(true);
+    // Centred: equal slack on both sides of the union horizontally.
+    expect(union.x - visible.x).toBeCloseTo(visible.x + visible.width - (union.x + union.width), 6);
+  });
+
+  it("zooms out for content beyond the right, top and bottom edges", () => {
+    for (const content of [
+      { x: 1200, y: 100, width: 100, height: 100 },
+      { x: 100, y: -60, width: 100, height: 100 },
+      { x: 100, y: 700, width: 100, height: 100 },
+    ]) {
+      const fit = fitToScreenFor(wide, content);
+      expect(fit.scale, JSON.stringify(content)).toBeLessThan(fitToScreen(wide).scale);
+      const visible = visibleLogicalRect(wide, fit);
+      expect(contains(visible, content)).toBe(true);
+      expect(contains(visible, DESIGN_RECT)).toBe(true);
+    }
+  });
+
+  it("re-centres on the union (same scale) when it already fits the panel at that scale", () => {
+    // Union -412..400 is 812 wide: fits the 1000-wide panel at scale 1, so
+    // the view only shifts to centre it (the base rect moves right).
+    const content = { x: -400, y: 100, width: 100, height: 100 };
+    const fit = fitToScreenFor(wide, content);
+    expect(fit.scale).toBeCloseTo(1, 6);
+    expect(fit.offsetX).toBeCloseTo((1000 - 812) / 2 + 412, 6);
+    expect(contains(visibleLogicalRect(wide, fit), content)).toBe(true);
+  });
+
+  it("zooms out on a tall viewport for content beyond the sides", () => {
+    const content = { x: -100, y: 300, width: 80, height: 80 };
+    const fit = fitToScreenFor(tall, content);
+    expect(fit.scale).toBeLessThan(fitToScreen(tall).scale);
+    const visible = visibleLogicalRect(tall, fit);
+    expect(visible.x).toBeCloseTo(-100 - VIEW_PADDING, 6);
+    expect(visible.x + visible.width).toBeCloseTo(400, 6);
+    expect(contains(visible, content)).toBe(true);
+  });
+
+  it("keeps the padding between the content and the panel edge after zooming out", () => {
+    const content = { x: -900, y: 0, width: 100, height: 711 };
+    const fit = fitToScreenFor(wide, content, 30);
+    const visible = visibleLogicalRect(wide, fit);
+    expect(content.x - visible.x).toBeGreaterThanOrEqual(30 - 1e-6);
+    expect(visible.y + visible.height - (content.y + content.height)).toBeGreaterThanOrEqual(30 - 1e-6);
+  });
+
+  it("uses the rotated bounds of the pieces", () => {
+    // A 45deg 100x100 square whose unrotated box is inside the visible rect
+    // (x -300..-200) but whose rotated box pokes out to x ~ -320.7.
+    const piece = { x: -300, y: 300, width: 100, height: 100, rotation: 45 };
+    expect(fitToScreenFor(wide, rotatedBounds([{ ...piece, rotation: 0 }]))).toEqual(fitToScreen(wide));
+    const fit = fitToScreenFor(wide, rotatedBounds([piece]));
+    expect(fit).not.toEqual(fitToScreen(wide));
+    expect(contains(visibleLogicalRect(wide, fit), rotatedBounds([piece]))).toBe(true);
+  });
+
+  it("guards a degenerate viewport like fitToScreen", () => {
+    const content = { x: -500, y: 0, width: 100, height: 100 };
+    for (const vp of [{ width: 0, height: 0 }, { width: -10, height: 500 }]) {
+      expect(fitToScreenFor(vp, content)).toEqual(fitToScreen(vp));
     }
   });
 });

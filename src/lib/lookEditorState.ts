@@ -1,5 +1,5 @@
 import type { PlacedItem } from "../components/OutfitBuilderPage";
-import { clampItem } from "./canvasSpace";
+import { clampItem, type Rect } from "./canvasSpace";
 
 export interface EditorState {
   items: PlacedItem[];
@@ -10,13 +10,20 @@ export interface EditorState {
 
 export type EditorAction =
   | { type: "add"; item: PlacedItem }
+  /** `bounds` (optional): logical rect the edited piece's rotated bounding
+   *  box is clamped into — the canvas passes the panel's visible logical
+   *  rect. Without it the patch is stored as given (the reducer knows no
+   *  viewport, so it never clamps to a rect of its own). */
   | {
       type: "update";
       id: string;
       patch: Partial<Pick<PlacedItem, "x" | "y" | "width" | "height" | "rotation">>;
+      bounds?: Rect;
     }
   | { type: "reorder"; id: string; direction: "front" | "back" }
-  | { type: "copy"; id: string; newId: string }
+  /** The copy is offset by COPY_OFFSET, then clamped into `bounds` if given
+   *  (same rule as `update`). */
+  | { type: "copy"; id: string; newId: string; bounds?: Rect }
   | { type: "remove"; id: string }
   | { type: "select"; id: string | null }
   | { type: "load"; items: PlacedItem[] }
@@ -57,7 +64,8 @@ export function editorReducer(state: EditorState, action: EditorAction): EditorS
     case "update": {
       const current = state.items.find((i) => i.id === action.id);
       if (!current) return state;
-      const next = clampItem({ ...current, ...action.patch });
+      const merged = { ...current, ...action.patch };
+      const next = action.bounds ? clampItem(merged, action.bounds) : merged;
       // A tap or a drag that ends where it started is not an edit: keep the
       // same state (no undo step).
       if (TRANSFORM_KEYS.every((key) => next[key] === current[key])) return state;
@@ -80,13 +88,14 @@ export function editorReducer(state: EditorState, action: EditorAction): EditorS
     case "copy": {
       const src = state.items.find((i) => i.id === action.id);
       if (!src) return state;
-      const copy = clampItem({
+      const offset: PlacedItem = {
         ...src,
         id: action.newId,
         x: src.x + COPY_OFFSET,
         y: src.y + COPY_OFFSET,
         zIndex: Math.max(...state.items.map((i) => i.zIndex)) + 1,
-      });
+      };
+      const copy = action.bounds ? clampItem(offset, action.bounds) : offset;
       return commit(state, [...state.items, copy], action.newId);
     }
 

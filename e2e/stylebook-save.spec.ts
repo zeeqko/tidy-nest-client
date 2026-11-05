@@ -1,6 +1,6 @@
 // End-to-end tests for the builder's Save flow: the top-bar Save pill opens
 // the "Save look" sheet (auto name with a "✨ auto" hint, occasion chips with
-// "＋ New", inline errors), create lands on the new look's detail page, and
+// "＋ New", inline errors; a bottom sheet on phones), create lands on the new look's detail page, and
 // edit mode offers "Save changes" (same look) and "Save as a new look" (a
 // copy; the original is untouched). Runs in the desktop (1440x900, mouse)
 // and mobile (390x844, touch) projects.
@@ -14,6 +14,7 @@ import {
   openBuilder,
   openSaveSheet,
   saveNewLook,
+  saveScreenshot,
   saveSheet,
   saveTrigger,
   sheetNameInput,
@@ -245,17 +246,28 @@ test.describe("save sheet", () => {
     expect(byZ(copy.items)).toEqual(byZ(before.items));
   });
 
-  test("(f) Save is disabled with no pieces", async ({ authedPage: page }) => {
+  test("(f) Save is disabled with no pieces, and tapping it says why", async ({ authedPage: page }, testInfo) => {
     await openBuilder(page);
     const save = saveTrigger(page);
     await expect(save).toBeVisible();
     await expect(save).toBeDisabled();
     await expect(save).toHaveAttribute("title", "Add at least one piece");
+    const hint = page.getByRole("status").filter({ hasText: "Add at least one piece" });
+    await expect(hint).toHaveCount(0);
     await save.click({ force: true });
-    await page.waitForTimeout(200);
+    // A visible, announced cue (a tooltip never shows on touch)...
+    await expect(hint).toBeVisible();
+    await expect(hint).toBeInViewport();
+    await saveScreenshot(page, testInfo, "save-disabled-hint");
     await expect(saveSheet(page)).toHaveCount(0);
+    // ...that hides itself after ~3 s.
+    await expect(hint).toHaveCount(0, { timeout: 6000 });
 
+    // Placing a piece hides it straight away.
+    await save.click({ force: true });
+    await expect(hint).toBeVisible();
     await addPiece(page, linen, 1);
+    await expect(hint).toHaveCount(0, { timeout: 1000 });
     await expect(save).toBeEnabled();
     expect(await save.getAttribute("title")).toBeNull();
     await page.getByRole("button", { name: "Undo" }).filter({ visible: true }).click();
@@ -317,19 +329,20 @@ test.describe("save sheet", () => {
     await expect(saveTrigger(page)).toBeFocused();
     expect(await page.evaluate(() => document.body.style.overflow)).not.toBe("hidden");
 
-    // The sheet's own close control (back chevron on phones, ✕ from sm).
+    // The sheet's own close control (✕ at every size).
     await openSaveSheet(page);
-    await saveSheet(page).getByRole("button", { name: phone ? "Go back" : "Close" }).click();
+    await expect(saveSheet(page).getByRole("button", { name: "Go back" })).toHaveCount(0);
+    await saveSheet(page).getByRole("button", { name: "Close" }).click();
     await expect(saveSheet(page)).toHaveCount(0);
     await expect(saveTrigger(page)).toBeFocused();
     // The builder is still there with its piece.
     expect(await canvasNodes(page)).toHaveLength(1);
 
-    if (!phone) {
-      await openSaveSheet(page);
-      await page.mouse.click(10, 10);
-      await expect(saveSheet(page)).toHaveCount(0);
-      await expect(saveTrigger(page)).toBeFocused();
-    }
+    // A tap/click on the dimmed backdrop above the sheet closes it too.
+    await openSaveSheet(page);
+    if (phone) await page.touchscreen.tap(195, 30);
+    else await page.mouse.click(10, 10);
+    await expect(saveSheet(page)).toHaveCount(0);
+    await expect(saveTrigger(page)).toBeFocused();
   });
 });

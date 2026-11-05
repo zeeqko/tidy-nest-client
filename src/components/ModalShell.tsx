@@ -58,6 +58,11 @@ export const MODAL_Z_CLASS: Record<keyof typeof MODAL_Z, string> = {
 const PAGE_OVERLAY_CLASS =
   "fixed inset-0 flex items-center justify-center bg-cute-bg pt-[env(safe-area-inset-top)] sm:bg-[#4A3F5555] sm:p-6 sm:pt-6";
 
+/** `sheet`: dimmed backdrop at every size; below `sm` the card sits at the
+ *  bottom (no full-screen page background), from `sm` it is centred as usual. */
+const SHEET_OVERLAY_CLASS =
+  "fixed inset-0 flex items-end justify-center bg-[#4A3F5555] sm:items-center sm:p-6";
+
 const ALERT_OVERLAY_CLASS =
   "fixed inset-0 flex items-center justify-center bg-[#4A3F5555] p-4 sm:p-6";
 
@@ -119,6 +124,11 @@ interface ModalShellPageProps {
    *  isn't hidden behind the nav. No effect at `sm`+, where `BottomNav`
    *  doesn't render. */
   belowBottomNav?: boolean;
+  /** Page variant only: below `sm`, a compact bottom sheet over the dimmed
+   *  page (hugs its content up to 85dvh, then scrolls inside; decorative
+   *  grab bar; ✕ close instead of the back chevron) rather than a
+   *  full-screen page. From `sm` up it is the usual centred card. */
+  sheet?: boolean;
   children: ReactNode;
 }
 
@@ -148,6 +158,7 @@ export function ModalShell({
   onSubmit,
   hideMobileBackButton,
   belowBottomNav,
+  sheet = false,
   children,
 }: ModalShellPageProps) {
   const titleId = useId();
@@ -261,14 +272,27 @@ export function ModalShell({
     );
   }
 
-  const cardClassName = `flex h-full w-full flex-col bg-cute-bg sm:h-auto sm:max-h-[90dvh] ${
-    maxWidthClassName ?? ""
-  } sm:rounded-cute-l sm:bg-cute-surface ${CARD_SHADOW}`;
+  const cardClassName = sheet
+    ? `flex h-auto max-h-[85dvh] w-full flex-col rounded-t-cute-l bg-cute-surface sm:max-h-[90dvh] ${
+        maxWidthClassName ?? ""
+      } sm:rounded-cute-l ${CARD_SHADOW}`
+    : `flex h-full w-full flex-col bg-cute-bg sm:h-auto sm:max-h-[90dvh] ${
+        maxWidthClassName ?? ""
+      } sm:rounded-cute-l sm:bg-cute-surface ${CARD_SHADOW}`;
 
   const cardContent = (
     <>
-      <div className="flex w-full items-center gap-3.5 px-5 pt-5 pb-3 sm:items-start sm:justify-between sm:p-8 sm:pb-0">
-        {!hideMobileBackButton && (
+      {sheet && (
+        <div aria-hidden="true" className="flex w-full shrink-0 justify-center pt-2.5 sm:hidden">
+          <span className="h-1.5 w-10 rounded-full bg-cute-border" />
+        </div>
+      )}
+      <div
+        className={`flex w-full items-center gap-3.5 px-5 pb-3 sm:items-start sm:justify-between sm:p-8 sm:pb-0 ${
+          sheet ? "pt-3" : "pt-5"
+        }`}
+      >
+        {!hideMobileBackButton && !sheet && (
           <button
             type="button"
             onClick={onClose}
@@ -297,7 +321,9 @@ export function ModalShell({
           type="button"
           onClick={onClose}
           aria-label="Close"
-          className="hidden h-9 w-9 items-center justify-center rounded-full bg-cute-surface-alt text-cute-text transition hover:brightness-95 sm:flex"
+          className={`${
+            sheet ? "flex shrink-0" : "hidden sm:flex"
+          } h-9 w-9 items-center justify-center rounded-full bg-cute-surface-alt text-cute-text transition hover:brightness-95`}
         >
           <X size={16} />
         </button>
@@ -329,7 +355,7 @@ export function ModalShell({
   };
 
   return (
-    <div className={`${PAGE_OVERLAY_CLASS} ${zIndexClass}`} onClick={handleBackdropClick}>
+    <div className={`${sheet ? SHEET_OVERLAY_CLASS : PAGE_OVERLAY_CLASS} ${zIndexClass}`} onClick={handleBackdropClick}>
       {as === "form" ? (
         <form
           ref={setCardRef}

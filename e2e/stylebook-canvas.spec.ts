@@ -656,11 +656,42 @@ test.describe("docked layout", () => {
       await saveScreenshot(page, testInfo, `builder-topbar-${label}`);
 
       const sheet = await openSaveSheet(page);
+      await page.waitForTimeout(100);
       const box = (await sheet.boundingBox())!;
       expect(box.y, `${label}: sheet top on screen`).toBeGreaterThanOrEqual(-0.5);
       expect(box.x).toBeGreaterThanOrEqual(-0.5);
       expect(box.x + box.width, `${label}: sheet fits horizontally`).toBeLessThanOrEqual(width + 0.5);
       expect(box.y + box.height, `${label}: sheet fits vertically`).toBeLessThanOrEqual(height + 0.5);
+      // What lies above the sheet (phone) / around it (desktop): the dimmed
+      // backdrop, i.e. the overlay itself, not page content and not the card.
+      const backdropAt = (x: number, y: number) =>
+        page.evaluate(
+          ([px, py]) => {
+            const el = document.elementFromPoint(px, py) as HTMLElement | null;
+            if (!el) return null;
+            return { inDialog: Boolean(el.closest('[role="dialog"]')), background: getComputedStyle(el).backgroundColor, fixed: getComputedStyle(el).position === "fixed" };
+          },
+          [x, y] as const,
+        );
+      const isDim = (v: { inDialog: boolean; background: string; fixed: boolean } | null) =>
+        Boolean(v && !v.inDialog && v.fixed && /^rgba\(74, 63, 85, 0\.33\d*\)$/.test(v.background));
+      if (testInfo.project.name === "mobile") {
+        // A compact bottom sheet: flush with the bottom edge, full width,
+        // hugging its content well below the top of the screen.
+        expect(box.y + box.height, `${label}: sheet sits on the bottom edge`).toBeCloseTo(height, 0);
+        expect(box.width, `${label}: sheet is full width`).toBeCloseTo(width, 0);
+        expect(box.height, `${label}: sheet at most 85% of the viewport`).toBeLessThanOrEqual(height * 0.85 + 1);
+        if (height >= 800) expect(box.y, `${label}: sheet top well below the viewport top`).toBeGreaterThanOrEqual(height * 0.3);
+        else expect(box.y, `${label}: sheet top below the viewport top`).toBeGreaterThanOrEqual(80);
+        const above = await backdropAt(width / 2, box.y / 2);
+        expect(isDim(above), `${label}: dimmed backdrop above the sheet (${JSON.stringify(above)})`).toBe(true);
+      } else {
+        // Still a centred dialog.
+        expect(Math.abs(box.x + box.width / 2 - width / 2), `${label}: centred horizontally`).toBeLessThanOrEqual(1);
+        expect(Math.abs(box.y + box.height / 2 - height / 2), `${label}: centred vertically`).toBeLessThanOrEqual(1);
+        const around = await backdropAt(10, 10);
+        expect(isDim(around), `${label}: dimmed backdrop around the dialog (${JSON.stringify(around)})`).toBe(true);
+      }
       const primary = sheet.getByRole("button", { name: "Save look", exact: true });
       await expect(primary, `${label}: primary button reachable`).toBeInViewport({ ratio: 1 });
       // Nothing else (e.g. the bottom nav) covers the primary button.

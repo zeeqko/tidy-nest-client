@@ -158,6 +158,11 @@ export function OutfitBuilderPage() {
   const [sheetOpen, setSheetOpen] = useState(false);
   const [saving, setSaving] = useState<"update" | "create" | null>(null);
   const [saveError, setSaveError] = useState<string | null>(null);
+  // Shown for ~3 s when the disabled Save is tapped (a `title` tooltip
+  // never appears on touch).
+  const [noPiecesHint, setNoPiecesHint] = useState(false);
+  const noPiecesTimerRef = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
+  useEffect(() => () => clearTimeout(noPiecesTimerRef.current), []);
   const mobileSaveRef = useRef<HTMLButtonElement>(null);
   const desktopSaveRef = useRef<HTMLButtonElement>(null);
   // Set false on unmount so a user who left during the refresh isn't pulled
@@ -242,8 +247,16 @@ export function OutfitBuilderPage() {
     setOccasion(existing ?? value);
   };
 
+  // A newly placed piece makes the hint moot.
+  if (hasPieces && noPiecesHint) setNoPiecesHint(false);
+
   const openSheet = () => {
-    if (!hasPieces) return;
+    if (!hasPieces) {
+      setNoPiecesHint(true);
+      clearTimeout(noPiecesTimerRef.current);
+      noPiecesTimerRef.current = setTimeout(() => setNoPiecesHint(false), 3000);
+      return;
+    }
     setSaveError(null);
     setSheetOpen(true);
   };
@@ -403,19 +416,30 @@ export function OutfitBuilderPage() {
     />
   );
 
-  // aria-disabled (not `disabled`) keeps it focusable and its tooltip working.
+  // aria-disabled (not `disabled`) keeps it focusable, its tooltip working,
+  // and lets a tap show the "Add at least one piece" bubble below it (a
+  // live region, so it's announced too).
   const saveButton = (ref: Ref<HTMLButtonElement>) => (
-    <button
-      ref={ref}
-      type="button"
-      onClick={openSheet}
-      aria-disabled={!hasPieces}
-      aria-haspopup="dialog"
-      title={hasPieces ? undefined : NO_PIECES_HINT}
-      className={SAVE_PILL}
-    >
-      Save
-    </button>
+    <div className="relative shrink-0">
+      <button
+        ref={ref}
+        type="button"
+        onClick={openSheet}
+        aria-disabled={!hasPieces}
+        aria-haspopup="dialog"
+        title={hasPieces ? undefined : NO_PIECES_HINT}
+        className={SAVE_PILL}
+      >
+        Save
+      </button>
+      <div role="status" className="pointer-events-none absolute top-full right-0 z-20 mt-2">
+        {noPiecesHint && (
+          <p className="whitespace-nowrap rounded-full bg-cute-text px-3 py-1.5 font-body text-xs font-semibold text-cute-surface shadow-md">
+            {NO_PIECES_HINT}
+          </p>
+        )}
+      </div>
+    </div>
   );
 
   return (

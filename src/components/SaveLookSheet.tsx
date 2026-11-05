@@ -39,8 +39,8 @@ const INPUT_CLASS =
   "w-full rounded-cute-m border border-cute-border bg-cute-surface px-3.5 py-2.5 font-body text-base text-cute-text outline-none transition placeholder:text-cute-text-muted focus:border-cute-primary sm:text-sm";
 
 /**
- * The builder's "Save look" sheet (full-screen on phones, a centred card from
- * `sm`, via `ModalShell`): Name (pre-filled with the auto name), Occasion
+ * The builder's "Save look" sheet (a bottom sheet over the dimmed builder on
+ * phones, a centred card from `sm`, via `ModalShell`'s `sheet` variant): Name (pre-filled with the auto name), Occasion
  * chips with "＋ New", the primary save button and, in edit mode, "Save as a
  * new look". All values live in the page, so closing and reopening the sheet
  * keeps them.
@@ -113,6 +113,7 @@ export function SaveLookSheet({
 
   return (
     <ModalShell
+      sheet
       level="base"
       onClose={close}
       closeGuard={closeGuard}

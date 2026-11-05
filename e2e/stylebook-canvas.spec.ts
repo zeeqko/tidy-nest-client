@@ -1,6 +1,7 @@
 // End-to-end tests for the Stylebook Outfit Builder: picker tap-to-add and
 // filters, the fixed (non-panning) canvas, save/reopen, the docked
-// canvas + picker layout, photo-less items, hidden categories, the category
+// canvas + picker layout (which fits the viewport, with Save in the top bar),
+// photo-less items, hidden categories, the category
 // form's Stylebook group, and window resizing. Runs in the desktop (1440x900, mouse) and
 // mobile (390x844, touch) projects; viewport-specific tests skip themselves.
 import type { Page } from "@playwright/test";
@@ -21,6 +22,7 @@ import {
   nodeClientRects,
   nodeScreenCenter,
   openBuilder,
+  openSaveSheet,
   picker,
   pickerPanel,
   pickerScroller,
@@ -29,8 +31,12 @@ import {
   rotatedBox,
   removeCross,
   rotaterPoint,
+  saveLookChanges,
   saveNewLook,
   saveScreenshot,
+  saveSheet,
+  saveTrigger,
+  sheetNameInput,
   selectGroup,
   selectPiece,
   selectionPill,
@@ -204,7 +210,14 @@ test.describe("fixed canvas", () => {
   }, testInfo) => {
     const touch = Boolean(testInfo.project.use.hasTouch);
     const { still } = await twoPieceCanvas(page);
-    // The page itself is scrollable here, so "did not scroll" is meaningful.
+    // The builder fits the viewport (nothing below the panels to scroll to),
+    // so make the document taller for this test: "did not scroll" is only
+    // meaningful when the page *could* scroll.
+    await page.evaluate(() => {
+      const spacer = document.createElement("div");
+      spacer.style.height = "1200px";
+      document.body.appendChild(spacer);
+    });
     expect(await page.evaluate(() => document.documentElement.scrollHeight > window.innerHeight)).toBe(true);
 
     const empty = await emptyCanvasPoint(page);
@@ -245,8 +258,8 @@ test.describe("fixed canvas", () => {
   });
 
   // A wheel / trackpad scroll over the canvas is allowed to scroll the page
-  // (the canvas deliberately has no wheel handler, so desktop users can still
-  // reach Save), so window.scrollY is intentionally NOT asserted here. What
+  // (the canvas deliberately has no wheel handler, so a short window can
+  // still scroll), so window.scrollY is intentionally NOT asserted here. What
   // must hold is that the wheel never moves pieces or zooms/pans the canvas.
   test("(c) a wheel / two-finger trackpad scroll over the canvas moves no piece and does not zoom or pan the canvas", async ({
     authedPage: page,
@@ -344,7 +357,6 @@ test.describe("fixed canvas", () => {
 
     // Reopen in the editor: the canvas shows exactly the saved transforms.
     await openBuilder(page, `/stylebook/${before.id}/edit`);
-    await expect(page.getByPlaceholder("Name your look")).toHaveValue("Three Piece Look");
     await expect.poll(async () => (await canvasNodes(page)).length).toBe(3);
     const sorted = [...before.items].sort((a, b) => a.zIndex - b.zIndex);
     expectSameNodes(
@@ -352,8 +364,11 @@ test.describe("fixed canvas", () => {
       sorted.map((i) => ({ cls: "", fill: null, x: i.x, y: i.y, width: i.width, height: i.height, rotation: i.rotation })),
     );
 
-    // Saving without changes round-trips every number exactly.
-    await page.getByRole("button", { name: "Save Changes" }).click();
+    // Saving without changes round-trips every number exactly; the sheet
+    // shows the saved name.
+    await openSaveSheet(page);
+    await expect(sheetNameInput(page)).toHaveValue("Three Piece Look");
+    await saveSheet(page).getByRole("button", { name: "Save changes", exact: true }).click();
     await expect(page).toHaveURL(new RegExp(`/stylebook/${before.id}$`));
     const after = await userApi.look(before.id);
     expect(after.items.map(transformOf)).toEqual(before.items.map(transformOf));
@@ -391,8 +406,7 @@ test.describe("fixed canvas", () => {
     await expect.poll(async () => (await canvasNodes(page)).length).toBe(2);
     await selectGroup(page, "Shoes");
     await addPiece(page, sneakers, 3);
-    await page.getByRole("button", { name: "Save Changes" }).click();
-    await expect(page).toHaveURL(new RegExp(`/stylebook/${id}$`));
+    await saveLookChanges(page, id);
 
     const after = await userApi.look(id);
     expect(after.items).toHaveLength(3);
@@ -437,8 +451,7 @@ test.describe("fixed canvas", () => {
     await page.waitForTimeout(400);
     await page.setViewportSize({ width: 1600, height: 1000 });
     await page.waitForTimeout(400);
-    await page.getByRole("button", { name: "Save Changes" }).click();
-    await expect(page).toHaveURL(new RegExp(`/stylebook/${id}$`));
+    await saveLookChanges(page, id);
     const second = await userApi.look(id);
     expect(second.items.map(transformOf)).toEqual(first.items.map(transformOf));
   });
@@ -496,11 +509,18 @@ test.describe("docked layout", () => {
     }
     // The section fills its docked slot.
     expect(section.height).toBeCloseTo(pick.height, 0);
-    // No horizontal page scroll.
+    // No horizontal page scroll, and no vertical one either: with Save in the
+    // top bar nothing sits below the panels.
     expect(
       await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth),
       `${label}: page does not scroll horizontally`,
     ).toBe(true);
+    expect(
+      await page.evaluate(() => document.documentElement.scrollHeight - window.innerHeight),
+      `${label}: page does not scroll vertically`,
+    ).toBeLessThanOrEqual(0);
+    // The top-bar Save is on screen without scrolling.
+    await expect(saveTrigger(page), `${label}: top-bar Save visible`).toBeInViewport({ ratio: 1 });
 
     // Both panels are usable without scrolling the page: fully on screen
     // (on a phone, above the fixed bottom nav).
@@ -603,29 +623,62 @@ test.describe("docked layout", () => {
       expect(box.bottom).toBeLessThanOrEqual(DESIGN_HEIGHT + 1e-6);
     }
 
-    // The Save footer below the panels is reachable by scrolling the page.
-    const save = page.getByRole("button", { name: "Save to Style Book" });
-    await save.scrollIntoViewIfNeeded();
-    await expect(save).toBeInViewport();
-    if (phone) {
-      await page.evaluate(() => window.scrollTo(0, document.documentElement.scrollHeight));
-      await page.waitForTimeout(200);
-      expect(await isFullyAboveNav(page, save), "Save button visible above the bottom nav").toBe(true);
-      await saveScreenshot(page, testInfo, "e-save-footer");
+  });
+
+  test("(e) the top-bar Save is visible without scrolling and its sheet fits the viewport with the primary button reachable", async ({
+    authedPage: page,
+  }, testInfo) => {
+    const sizes =
+      testInfo.project.name === "mobile"
+        ? [
+            { width: 390, height: 844, shot: "save-sheet-phone-390x844" },
+            { width: 375, height: 667, shot: "save-sheet-phone-375x667" },
+          ]
+        : [{ width: 1440, height: 900, shot: "save-sheet-desktop-1440x900" }];
+    await openBuilder(page);
+    await addPiece(page, linen, 1);
+    await addPiece(page, denim, 2);
+
+    for (const { width, height, shot } of sizes) {
+      await page.setViewportSize({ width, height });
+      await page.evaluate(() => window.scrollTo(0, 0));
+      await page.waitForTimeout(300);
+      const label = `${width}x${height}`;
+      expect(await page.evaluate(() => window.scrollY), `${label}: at the top`).toBe(0);
+      await expect(saveTrigger(page), `${label}: Save fully on screen`).toBeInViewport({ ratio: 1 });
+      expect(
+        await page.evaluate(() => document.documentElement.scrollHeight - window.innerHeight),
+        `${label}: page does not scroll vertically`,
+      ).toBeLessThanOrEqual(0);
+      // The Save pill leaves room for the whole page title (no ellipsis).
+      const title = page.getByRole("heading", { name: "Create a Look" }).filter({ visible: true });
+      expect(await title.evaluate((el) => el.scrollWidth - el.clientWidth), `${label}: title not truncated`).toBeLessThanOrEqual(0);
+      await saveScreenshot(page, testInfo, `builder-topbar-${label}`);
+
+      const sheet = await openSaveSheet(page);
+      const box = (await sheet.boundingBox())!;
+      expect(box.y, `${label}: sheet top on screen`).toBeGreaterThanOrEqual(-0.5);
+      expect(box.x).toBeGreaterThanOrEqual(-0.5);
+      expect(box.x + box.width, `${label}: sheet fits horizontally`).toBeLessThanOrEqual(width + 0.5);
+      expect(box.y + box.height, `${label}: sheet fits vertically`).toBeLessThanOrEqual(height + 0.5);
+      const primary = sheet.getByRole("button", { name: "Save look", exact: true });
+      await expect(primary, `${label}: primary button reachable`).toBeInViewport({ ratio: 1 });
+      // Nothing else (e.g. the bottom nav) covers the primary button.
+      const centre = (await primary.boundingBox())!;
+      expect(
+        await page.evaluate(
+          ([x, y]) => document.elementFromPoint(x, y)?.closest("button")?.textContent ?? null,
+          [centre.x + centre.width / 2, centre.y + centre.height / 2] as const,
+        ),
+        `${label}: primary button is the topmost element at its centre`,
+      ).toBe("Save look");
+      expect(await page.evaluate(() => document.body.style.overflow), `${label}: body scroll locked`).toBe("hidden");
+      await saveScreenshot(page, testInfo, shot);
+      await page.keyboard.press("Escape");
+      await expect(saveSheet(page)).toHaveCount(0);
     }
   });
 });
-
-/** True when `target` is fully inside the viewport and not under the fixed bottom nav. */
-async function isFullyAboveNav(page: import("@playwright/test").Page, target: import("@playwright/test").Locator) {
-  const box = await target.boundingBox();
-  if (!box) return false;
-  const navTop = await page.evaluate(() => {
-    const nav = [...document.querySelectorAll("nav")].find((n) => getComputedStyle(n).position === "fixed");
-    return nav ? nav.getBoundingClientRect().top : window.innerHeight;
-  });
-  return box.y >= 0 && box.y + box.height <= navTop;
-}
 
 test.describe("photo-less items and hidden categories", () => {
   test("(f) an item without a photo shows the fallback tile and canvas tile, and never hits the upload route", async ({

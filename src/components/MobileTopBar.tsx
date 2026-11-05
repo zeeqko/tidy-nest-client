@@ -8,14 +8,17 @@ interface MobileTopBarProps {
   backTo?: string;
   /** Optional element rendered at the right edge (e.g. an add button). */
   action?: ReactNode;
+  /** Drop the bar's own horizontal padding, for pages whose container
+   *  already pads it (keeps the bar aligned with the content below). */
+  flush?: boolean;
 }
 
 /** Mobile-only page top bar: back button + title (per the mobile designs in UI.pen). */
-export function MobileTopBar({ title, backTo, action }: MobileTopBarProps) {
+export function MobileTopBar({ title, backTo, action, flush }: MobileTopBarProps) {
   const navigate = useNavigate();
 
   return (
-    <div className="flex w-full items-center gap-3.5 px-5 pt-5 pb-3 sm:hidden">
+    <div className={`flex w-full items-center gap-3.5 pt-5 pb-3 sm:hidden ${flush ? "" : "px-5"}`}>
       <button
         type="button"
         aria-label="Go back"

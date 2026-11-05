@@ -18,6 +18,7 @@ import {
   picker,
   pointerDrag,
   removeCross,
+  saveNewLook,
   saveScreenshot,
   selectPiece,
   selectionPill,
@@ -338,10 +339,9 @@ test.describe("selection ✕ and pill", () => {
   test("read-only detail page shows no ✕ and no pill", async ({ authedPage: page, userApi }) => {
     await openBuilder(page);
     await addPiece(page, linen, 1);
-    await page.getByPlaceholder("Name your look").fill("Read only look");
-    await page.getByRole("button", { name: "Save to Style Book" }).click();
-    await expect(page).toHaveURL(/\/stylebook$/);
+    const id = await saveNewLook(page, "Read only look");
     const [look] = await userApi.looks();
+    expect(look.id).toBe(id);
     await page.goto(`/stylebook/${look.id}`);
     await expect.poll(async () => (await canvasNodes(page)).length).toBe(1);
     await page.keyboard.press("Delete");

@@ -7,9 +7,11 @@ interface FilterPillProps {
   icon?: ReactNode;
   /** "md" = category-page subcategory tabs; "sm" = All Items filter chips. */
   size?: "md" | "sm";
+  /** When set, exposes the chip as a toggle button (`aria-pressed`). */
+  pressed?: boolean;
 }
 
-export function FilterPill({ label, active, onClick, icon, size = "sm" }: FilterPillProps) {
+export function FilterPill({ label, active, onClick, icon, size = "sm", pressed }: FilterPillProps) {
   const shadow = "shadow-[0_1px_3.5px_-1px_rgba(0,0,0,0.06)]";
   const padding =
     size === "md"
@@ -23,6 +25,7 @@ export function FilterPill({ label, active, onClick, icon, size = "sm" }: Filter
     <button
       type="button"
       onClick={onClick}
+      aria-pressed={pressed}
       className={`flex items-center gap-1.5 rounded-full font-body transition ${text} ${padding} ${shadow} ${
         active
           ? "bg-cute-primary font-semibold text-cute-primary-foreground"

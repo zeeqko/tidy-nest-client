@@ -295,11 +295,50 @@ export async function selectGroup(page: Page, label: "Clothes" | "Shoes" | "Acce
   await expect(button).toHaveAttribute("aria-pressed", "true");
 }
 
-/** Names the look and saves it, returning the saved look's id. */
-export async function saveNewLook(page: Page, lookName: string): Promise<void> {
-  await page.getByPlaceholder("Name your look").fill(lookName);
-  await page.getByRole("button", { name: "Save to Style Book" }).click();
-  await expect(page).toHaveURL(/\/stylebook$/);
+// ---- Save sheet ------------------------------------------------------------
+
+/** The builder's top-bar Save pill (the visible one: phone or desktop header). */
+export const saveTrigger = (page: Page) => page.getByRole("button", { name: "Save", exact: true }).filter({ visible: true });
+/** The open Save sheet ("Save look" when creating, "Save changes" when editing). */
+export const saveSheet = (page: Page) => page.getByRole("dialog", { name: /^Save (look|changes)$/ });
+/** The sheet's Name field. */
+export const sheetNameInput = (page: Page) => saveSheet(page).getByRole("textbox", { name: "Name", exact: true });
+/** An occasion chip in the sheet. */
+export const occasionChip = (page: Page, label: string) =>
+  saveSheet(page).getByRole("button", { name: label, exact: true });
+
+/** Clicks the top-bar Save and waits for the sheet. */
+export async function openSaveSheet(page: Page) {
+  await saveTrigger(page).click();
+  await expect(saveSheet(page)).toBeVisible();
+  return saveSheet(page);
+}
+
+/** The id at the end of a `/stylebook/<id>` URL. */
+export function lookIdFromUrl(page: Page): string {
+  const match = new URL(page.url()).pathname.match(/^\/stylebook\/([^/]+)$/);
+  expect(match, `on a look detail page (${page.url()})`).not.toBeNull();
+  return match![1];
+}
+
+/**
+ * Creates the look being built: top-bar Save, optionally types a name (else
+ * the auto name is kept), clicks "Save look", and waits for the new look's
+ * detail page. Returns the new look's id.
+ */
+export async function saveNewLook(page: Page, lookName?: string): Promise<string> {
+  await openSaveSheet(page);
+  if (lookName !== undefined) await sheetNameInput(page).fill(lookName);
+  await saveSheet(page).getByRole("button", { name: "Save look", exact: true }).click();
+  await expect(page).toHaveURL(/\/stylebook\/(?!create$)[^/]+$/);
+  return lookIdFromUrl(page);
+}
+
+/** Edit mode: top-bar Save, then "Save changes"; waits for the look's detail page. */
+export async function saveLookChanges(page: Page, id: string): Promise<void> {
+  await openSaveSheet(page);
+  await saveSheet(page).getByRole("button", { name: "Save changes", exact: true }).click();
+  await expect(page).toHaveURL(new RegExp(`/stylebook/${id}$`));
 }
 
 const SCREENSHOT_DIR = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../screenshots");

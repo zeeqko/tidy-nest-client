@@ -1,11 +1,11 @@
-import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type Ref } from "react";
 import type { LucideIcon } from "lucide-react";
-import { Check, Redo2, Undo2, X } from "lucide-react";
+import { Redo2, Undo2, X } from "lucide-react";
 import { Link, useNavigate, useParams } from "react-router-dom";
 import { MobileTopBar } from "./MobileTopBar";
-import { FilterPill } from "./FilterPill";
 import { OutfitCanvas, type TransformPatch } from "./OutfitCanvas";
 import { StylebookPicker } from "./StylebookPicker";
+import { SaveLookSheet } from "./SaveLookSheet";
 import { refreshLooksBounded } from "../hooks/useLooks";
 import { useCategories } from "../hooks/useCategories";
 import { useLookEditor } from "../hooks/useLookEditor";
@@ -20,6 +20,7 @@ import { buildGroupMap } from "../lib/pickerModel";
 import { countsByItemId, lastPlacementId } from "../lib/placementCounts";
 import { createSerialChain } from "../lib/serialChain";
 import { toPlacedItems } from "../lib/lookPlacements";
+import { autoLookName } from "../lib/lookName";
 import type { OrganizingItem } from "../types";
 
 /** Nothing overlays the canvas, so new pieces are placed against the whole
@@ -27,19 +28,27 @@ import type { OrganizingItem } from "../types";
 const PLACEMENT_AREA: Rect = { x: 0, y: 0, width: DESIGN_WIDTH, height: DESIGN_HEIGHT };
 
 /** Height of the canvas + picker panels: the viewport minus the page chrome
- *  around them, so both are usable without scrolling the page. Phones (below
- *  `sm`) subtract the back-button top bar, the page padding/gap and the fixed
- *  bottom nav (plus the safe-area insets); `sm` and up the brand bar and the
- *  title row. `100vh` is the fallback for browsers without `dvh`; the
- *  `min-h` keeps both panels usable on very short windows (the page scrolls
- *  instead). The name/occasion/Save footer sits below. */
+ *  around them, so the page fits the viewport exactly (no page scroll).
+ *  Phones (below `sm`): 11.75rem = the page's top padding (0.5rem) + the
+ *  back-button top bar (4.25rem) + the gap (1rem) + AppLayout's `pb-24`
+ *  reserved for the fixed bottom nav (6rem), plus the safe-area insets.
+ *  `sm` and up: 13.25rem = the brand bar (5.5rem) + top padding (0.5rem) +
+ *  the title row (3.5rem) + gap-9 (2.25rem) + the page's `sm:pb-6` (1.5rem).
+ *  Change these together with that chrome. `100vh` is the fallback for
+ *  browsers without `dvh`; the `min-h` keeps both panels usable on very short
+ *  windows (the page scrolls instead). Save lives in the top bar. */
 const PANELS_HEIGHT = [
-  "h-[calc(100vh_-_10.75rem_-_env(safe-area-inset-top)_-_env(safe-area-inset-bottom))]",
-  "supports-[height:100dvh]:h-[calc(100dvh_-_10.75rem_-_env(safe-area-inset-top)_-_env(safe-area-inset-bottom))]",
+  "h-[calc(100vh_-_11.75rem_-_env(safe-area-inset-top)_-_env(safe-area-inset-bottom))]",
+  "supports-[height:100dvh]:h-[calc(100dvh_-_11.75rem_-_env(safe-area-inset-top)_-_env(safe-area-inset-bottom))]",
   "sm:h-[calc(100vh_-_13.25rem_-_env(safe-area-inset-top))]",
   "sm:supports-[height:100dvh]:h-[calc(100dvh_-_13.25rem_-_env(safe-area-inset-top))]",
   "min-h-[24rem] lg:min-h-[30rem]",
 ].join(" ");
+
+const SAVE_PILL =
+  "flex h-9 shrink-0 items-center justify-center rounded-full bg-cute-primary px-3 sm:px-4 font-body text-sm font-semibold text-cute-primary-foreground transition hover:brightness-105 aria-disabled:cursor-not-allowed aria-disabled:opacity-50 aria-disabled:hover:brightness-100";
+
+const NO_PIECES_HINT = "Add at least one piece";
 
 const HEADER_ICON_BUTTON =
   "flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-cute-surface-alt text-cute-text transition hover:brightness-95 disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:brightness-100";
@@ -68,17 +77,36 @@ export interface PlacedItem {
   iconColor: string;
 }
 
+/** Phone variant: one segmented pill (as in the design) so the top bar keeps
+ *  room for the title next to Save. */
+const COMPACT_UNDO_REDO_BUTTON =
+  "flex h-9 w-9 items-center justify-center rounded-full text-cute-text transition hover:brightness-95 disabled:cursor-not-allowed disabled:opacity-40";
+
 function UndoRedoButtons({
   canUndo,
   canRedo,
   onUndo,
   onRedo,
+  compact,
 }: {
   canUndo: boolean;
   canRedo: boolean;
   onUndo(): void;
   onRedo(): void;
+  compact?: boolean;
 }) {
+  if (compact) {
+    return (
+      <div className="flex shrink-0 items-center rounded-full bg-cute-surface-alt">
+        <button type="button" onClick={onUndo} disabled={!canUndo} aria-label="Undo" className={COMPACT_UNDO_REDO_BUTTON}>
+          <Undo2 size={17} />
+        </button>
+        <button type="button" onClick={onRedo} disabled={!canRedo} aria-label="Redo" className={COMPACT_UNDO_REDO_BUTTON}>
+          <Redo2 size={17} />
+        </button>
+      </div>
+    );
+  }
   return (
     <div className="flex shrink-0 items-center gap-2">
       <button
@@ -103,10 +131,10 @@ function UndoRedoButtons({
   );
 }
 
-/** Outfit Builder page: header (with undo/redo), then two docked panels —
- *  the 9:16 arrange canvas and the Stylebook picker, side by side from `lg`
- *  and stacked (canvas ~3/5 over picker ~2/5) below it, never overlapping —
- *  and the name + occasion + save footer below.
+/** Outfit Builder page: header (undo/redo and the Save pill), then two docked
+ *  panels — the 9:16 arrange canvas and the Stylebook picker, side by side
+ *  from `lg` and stacked (canvas ~3/5 over picker ~2/5) below it, never
+ *  overlapping. Save opens `SaveLookSheet` (name, occasion, save actions).
  *
  *  Placements live in `useLookEditor` (undo/redo history). Doubles as the
  *  edit flow when mounted at `/stylebook/:id/edit`: the look is loaded via
@@ -120,10 +148,18 @@ export function OutfitBuilderPage() {
   const { look, loading: lookLoading, error: lookError } = useLook(id);
   const { categories } = useCategories();
   const { state, dispatch, canUndo, canRedo } = useLookEditor();
+  // `name` only counts once the user has typed (or it was loaded for edit);
+  // until then the sheet shows the live auto name instead.
   const [name, setName] = useState("");
+  const [nameEdited, setNameEdited] = useState(false);
   const [occasion, setOccasion] = useState("");
-  const [saving, setSaving] = useState(false);
+  // Custom occasions added with "＋ New" this session.
+  const [customOccasions, setCustomOccasions] = useState<string[]>([]);
+  const [sheetOpen, setSheetOpen] = useState(false);
+  const [saving, setSaving] = useState<"update" | "create" | null>(null);
   const [saveError, setSaveError] = useState<string | null>(null);
+  const mobileSaveRef = useRef<HTMLButtonElement>(null);
+  const desktopSaveRef = useRef<HTMLButtonElement>(null);
   // Set false on unmount so a user who left during the refresh isn't pulled
   // back, and so a still-pending add doesn't dispatch after unmount.
   const mountedRef = useRef(true);
@@ -142,6 +178,7 @@ export function OutfitBuilderPage() {
     if (!look || prefilledRef.current) return;
     prefilledRef.current = true;
     setName(look.name);
+    setNameEdited(true);
     setOccasion(look.occasion);
     // Deliberately not routed through `addItem`, which is the only path
     // allowed to enqueue cutouts.
@@ -178,8 +215,56 @@ export function OutfitBuilderPage() {
   const groupMap = useMemo(() => buildGroupMap(categories), [categories]);
   const counts = useMemo(() => countsByItemId(state.items), [state.items]);
 
-  const trimmedName = name.trim();
-  const canSave = trimmedName.length > 0 && state.items.length > 0 && !saving;
+  const hasPieces = state.items.length > 0;
+  const autoName = useMemo(
+    () => autoLookName(state.items.map((item) => item.name), occasion),
+    [state.items, occasion],
+  );
+  const shownName = nameEdited ? name : autoName;
+
+  // Seed occasions, then the edited look's own (if it isn't a seed), then any
+  // added with "＋ New" — deduped case-insensitively, first spelling wins.
+  const occasionChips = useMemo(() => {
+    const chips: string[] = [];
+    const seen = new Set<string>();
+    for (const value of [...seedOccasions, look?.occasion ?? "", ...customOccasions]) {
+      const key = value.trim().toLowerCase();
+      if (!key || seen.has(key)) continue;
+      seen.add(key);
+      chips.push(value.trim());
+    }
+    return chips;
+  }, [look?.occasion, customOccasions]);
+
+  const addOccasion = (value: string) => {
+    const existing = occasionChips.find((chip) => chip.toLowerCase() === value.toLowerCase());
+    if (!existing) setCustomOccasions((current) => [...current, value]);
+    setOccasion(existing ?? value);
+  };
+
+  const openSheet = () => {
+    if (!hasPieces) return;
+    setSaveError(null);
+    setSheetOpen(true);
+  };
+
+  // Hands focus back to the (visible) top-bar Save once the sheet closes.
+  // ModalShell restores the previously focused element too, but a tap on
+  // Safari doesn't focus the button, so this doesn't rely on it.
+  const closeSheet = useCallback(() => setSheetOpen(false), []);
+  const sheetWasOpenRef = useRef(false);
+  useEffect(() => {
+    if (sheetOpen) {
+      sheetWasOpenRef.current = true;
+      return;
+    }
+    if (!sheetWasOpenRef.current) return;
+    sheetWasOpenRef.current = false;
+    const visible = [mobileSaveRef.current, desktopSaveRef.current].find(
+      (el) => el && el.getClientRects().length > 0,
+    );
+    visible?.focus();
+  }, [sheetOpen]);
 
   // Cancel/close targets land back on the look's own detail page when
   // editing, and the Style Book when creating.
@@ -228,20 +313,20 @@ export function OutfitBuilderPage() {
     if (placementId) dispatch({ type: "remove", id: placementId });
   };
 
-  const toggleOccasion = (value: string) => {
-    setOccasion((current) => (current === value ? "" : value));
-  };
-
-  const handleSave = async () => {
-    if (!canSave) return;
-    setSaving(true);
+  /** Saves the editor state: `"update"` the open look (edit mode) or
+   *  `"create"` a new one (create mode, or "Save as a new look" — which
+   *  leaves the original look untouched). Lands on the saved look's detail. */
+  const handleSave = async (action: "update" | "create") => {
+    if (!hasPieces || saving) return;
+    setSaving(action);
     setSaveError(null);
     // Built explicitly (never by spreading an `ApiLook`) — `name`/`imageURL`/
     // `cutoutURL` on each item are response-only and must not be sent back on
     // write. Same shape for both create and edit. Z-indexes are saved as the
     // editor holds them (sparse zone bands) so reopened looks keep their layering.
     const payload: NewLook = {
-      name: trimmedName,
+      // A blank field means "use the suggestion".
+      name: shownName.trim() || autoName,
       occasion,
       items: state.items.map(({ itemId, x, y, width, height, rotation, zIndex }) => ({
         itemId,
@@ -254,20 +339,21 @@ export function OutfitBuilderPage() {
       })),
     };
     try {
-      if (isEditing && id) {
+      if (action === "update" && isEditing && id) {
         await updateLook(id, payload);
         await refreshLooksBounded();
         if (!mountedRef.current) return;
         navigate(`/stylebook/${id}`);
       } else {
-        await createLook(payload);
+        const created = await createLook(payload);
         await refreshLooksBounded();
         if (!mountedRef.current) return;
-        navigate("/stylebook");
+        navigate(`/stylebook/${created.id}`);
       }
     } catch (err) {
+      if (!mountedRef.current) return;
       setSaveError(err instanceof Error ? err.message : "Failed to save your look");
-      setSaving(false);
+      setSaving(null);
     }
   };
 
@@ -307,22 +393,44 @@ export function OutfitBuilderPage() {
     }
   }
 
-  const undoRedo = (
+  const undoRedo = (compact: boolean) => (
     <UndoRedoButtons
       canUndo={canUndo}
       canRedo={canRedo}
       onUndo={() => dispatch({ type: "undo" })}
       onRedo={() => dispatch({ type: "redo" })}
+      compact={compact}
     />
   );
 
+  // aria-disabled (not `disabled`) keeps it focusable and its tooltip working.
+  const saveButton = (ref: Ref<HTMLButtonElement>) => (
+    <button
+      ref={ref}
+      type="button"
+      onClick={openSheet}
+      aria-disabled={!hasPieces}
+      aria-haspopup="dialog"
+      title={hasPieces ? undefined : NO_PIECES_HINT}
+      className={SAVE_PILL}
+    >
+      Save
+    </button>
+  );
+
   return (
-    <div className="w-full px-5 pt-2 pb-10 sm:px-10">
+    <div className="w-full px-5 pt-2 sm:px-10 sm:pb-6">
       <div className="mx-auto flex w-full max-w-cute-page 2xl:max-w-cute-page-wide flex-col gap-4 sm:gap-9">
         <MobileTopBar
           title={isEditing ? "Edit Look" : "Create a Look"}
           backTo={backTarget}
-          action={undoRedo}
+          flush
+          action={
+            <div className="flex shrink-0 items-center gap-1.5">
+              {undoRedo(true)}
+              {saveButton(mobileSaveRef)}
+            </div>
+          }
         />
 
         <div className="hidden sm:block">
@@ -338,7 +446,8 @@ export function OutfitBuilderPage() {
               </p>
             </div>
             <div className="flex shrink-0 items-center gap-2">
-              {undoRedo}
+              {undoRedo(false)}
+              {saveButton(desktopSaveRef)}
               <button
                 type="button"
                 onClick={goBack}
@@ -384,51 +493,27 @@ export function OutfitBuilderPage() {
           </div>
         </div>
 
-        <div className="flex w-full flex-col gap-4 border-t border-cute-border pt-4 sm:pt-6">
-          <div className="flex flex-col gap-1.5">
-            <label
-              htmlFor="look-name"
-              className="hidden font-body text-sm font-medium text-cute-text sm:block"
-            >
-              Look Name
-            </label>
-            <input
-              id="look-name"
-              type="text"
-              value={name}
-              onChange={(event) => setName(event.target.value)}
-              placeholder="Name your look"
-              className="w-full rounded-full border border-cute-border bg-cute-surface px-[18px] py-3.5 font-body text-sm text-cute-text placeholder:text-cute-text-muted focus:border-cute-primary focus:outline-none"
-            />
-          </div>
-
-          <div className="flex w-full flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-            <div className="flex flex-wrap items-center gap-2.5">
-              {seedOccasions.map((value) => (
-                <FilterPill
-                  key={value}
-                  label={value}
-                  active={occasion === value}
-                  onClick={() => toggleOccasion(value)}
-                  size="sm"
-                />
-              ))}
-            </div>
-            <button
-              type="button"
-              disabled={!canSave}
-              onClick={handleSave}
-              className="flex w-full items-center justify-center gap-1.5 rounded-full bg-cute-primary px-5 py-3.5 font-body text-sm font-semibold text-cute-primary-foreground transition hover:brightness-105 disabled:cursor-not-allowed disabled:opacity-50 disabled:hover:brightness-100 sm:w-auto"
-            >
-              <Check size={16} />
-              {saving ? "Saving…" : isEditing ? "Save Changes" : "Save to Style Book"}
-            </button>
-          </div>
-
-          {saveError && (
-            <p className="font-body text-sm text-cute-danger">{saveError}</p>
-          )}
-        </div>
+        {sheetOpen && (
+          <SaveLookSheet
+            mode={isEditing ? "edit" : "create"}
+            name={shownName}
+            isAutoName={!nameEdited}
+            autoName={autoName}
+            onNameChange={(value) => {
+              setName(value);
+              setNameEdited(true);
+            }}
+            occasions={occasionChips}
+            occasion={occasion}
+            onOccasionChange={setOccasion}
+            onAddOccasion={addOccasion}
+            saving={saving}
+            error={saveError}
+            onSave={() => void handleSave(isEditing ? "update" : "create")}
+            onSaveAsNew={isEditing ? () => void handleSave("create") : undefined}
+            onClose={closeSheet}
+          />
+        )}
       </div>
     </div>
   );

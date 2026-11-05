@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import type { LucideIcon } from "lucide-react";
 import { Check, Redo2, Undo2, X } from "lucide-react";
 import { Link, useNavigate, useParams } from "react-router-dom";
@@ -12,7 +12,7 @@ import { useLookEditor } from "../hooks/useLookEditor";
 import { createLook, updateLook, type NewLook } from "../api/looks";
 import { useLook } from "../hooks/useLook";
 import { seedOccasions } from "../data/occasions";
-import type { Rect } from "../lib/canvasSpace";
+import { DESIGN_HEIGHT, DESIGN_WIDTH, type Rect } from "../lib/canvasSpace";
 import { createCutoutQueue } from "../lib/cutoutQueue";
 import { loadImageAspect } from "../lib/imageAspect";
 import { placeItem, startingZIndex } from "../lib/placement";
@@ -20,8 +20,26 @@ import { buildGroupMap } from "../lib/pickerModel";
 import { countsByItemId, lastPlacementId } from "../lib/placementCounts";
 import { createSerialChain } from "../lib/serialChain";
 import { toPlacedItems } from "../lib/lookPlacements";
-import { placementArea } from "../lib/visibleRect";
 import type { OrganizingItem } from "../types";
+
+/** Nothing overlays the canvas, so new pieces are placed against the whole
+ *  400x711 logical space. */
+const PLACEMENT_AREA: Rect = { x: 0, y: 0, width: DESIGN_WIDTH, height: DESIGN_HEIGHT };
+
+/** Height of the canvas + picker panels: the viewport minus the page chrome
+ *  around them, so both are usable without scrolling the page. Phones (below
+ *  `sm`) subtract the back-button top bar, the page padding/gap and the fixed
+ *  bottom nav (plus the safe-area insets); `sm` and up the brand bar and the
+ *  title row. `100vh` is the fallback for browsers without `dvh`; the
+ *  `min-h` keeps both panels usable on very short windows (the page scrolls
+ *  instead). The name/occasion/Save footer sits below. */
+const PANELS_HEIGHT = [
+  "h-[calc(100vh_-_10.75rem_-_env(safe-area-inset-top)_-_env(safe-area-inset-bottom))]",
+  "supports-[height:100dvh]:h-[calc(100dvh_-_10.75rem_-_env(safe-area-inset-top)_-_env(safe-area-inset-bottom))]",
+  "sm:h-[calc(100vh_-_13.25rem_-_env(safe-area-inset-top))]",
+  "sm:supports-[height:100dvh]:h-[calc(100dvh_-_13.25rem_-_env(safe-area-inset-top))]",
+  "min-h-[24rem] lg:min-h-[30rem]",
+].join(" ");
 
 const HEADER_ICON_BUTTON =
   "flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-cute-surface-alt text-cute-text transition hover:brightness-95 disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:brightness-100";
@@ -85,9 +103,10 @@ function UndoRedoButtons({
   );
 }
 
-/** Outfit Builder page: header (with undo/redo), the full-height 9:16
- *  arrange canvas with the Stylebook picker sheet overlaying it, and the
- *  name + occasion + save footer below.
+/** Outfit Builder page: header (with undo/redo), then two docked panels —
+ *  the 9:16 arrange canvas and the Stylebook picker, side by side from `lg`
+ *  and stacked (canvas ~3/5 over picker ~2/5) below it, never overlapping —
+ *  and the name + occasion + save footer below.
  *
  *  Placements live in `useLookEditor` (undo/redo history). Doubles as the
  *  edit flow when mounted at `/stylebook/:id/edit`: the look is loaded via
@@ -105,7 +124,6 @@ export function OutfitBuilderPage() {
   const [occasion, setOccasion] = useState("");
   const [saving, setSaving] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
-  const [pickerHeight, setPickerHeight] = useState(0);
   // Set false on unmount so a user who left during the refresh isn't pulled
   // back, and so a still-pending add doesn't dispatch after unmount.
   const mountedRef = useRef(true);
@@ -156,12 +174,6 @@ export function OutfitBuilderPage() {
   useLayoutEffect(() => {
     itemsRef.current = state.items;
   }, [state.items]);
-  // Last logical rect the canvas reported as visible above the picker sheet.
-  const visibleRectRef = useRef<Rect | null>(null);
-  const handleVisibleRectChange = useCallback((rect: Rect) => {
-    visibleRectRef.current = rect;
-  }, []);
-  const handlePickerHeightChange = useCallback((px: number) => setPickerHeight(px), []);
 
   const groupMap = useMemo(() => buildGroupMap(categories), [categories]);
   const counts = useMemo(() => countsByItemId(state.items), [state.items]);
@@ -191,7 +203,7 @@ export function OutfitBuilderPage() {
       const placement = placeItem(
         { group, subcategory, aspect },
         existing.map(({ x, y, width, height }) => ({ x, y, width, height })),
-        placementArea(visibleRectRef.current),
+        PLACEMENT_AREA,
       );
       const placed: PlacedItem = {
         id: crypto.randomUUID(),
@@ -339,74 +351,38 @@ export function OutfitBuilderPage() {
           </div>
         </div>
 
-        {/* Explicit height: the canvas is h-full and the picker sheet is
-            absolute bottom-0 inside this box. Mobile subtracts the top bar
-            and the fixed bottom nav; desktop the brand bar and title row;
-            both leave ~4rem so the top of the list/footer below peeks into
-            view. `vh` is the fallback for browsers without `dvh`. */}
-        <div
-          className="relative h-[calc(100vh-15rem)] min-h-[28rem] w-full overflow-hidden rounded-cute-l border border-cute-border supports-[height:100dvh]:h-[calc(100dvh-15rem)] sm:h-[calc(100vh-17rem)] sm:supports-[height:100dvh]:h-[calc(100dvh-17rem)]"
-          data-testid="builder-canvas-area"
-        >
-          <OutfitCanvas
-            items={state.items}
-            selectedId={state.selectedId}
-            onSelect={(placementId) => dispatch({ type: "select", id: placementId })}
-            onChangeTransform={(placementId, patch: TransformPatch) =>
-              dispatch({ type: "update", id: placementId, patch })
-            }
-            onReorder={(placementId, direction) =>
-              dispatch({ type: "reorder", id: placementId, direction })
-            }
-            onCopy={(placementId) =>
-              dispatch({ type: "copy", id: placementId, newId: crypto.randomUUID() })
-            }
-            onRemove={(placementId) => dispatch({ type: "remove", id: placementId })}
-            visibleBottomInset={pickerHeight}
-            onVisibleRectChange={handleVisibleRectChange}
-          />
-          <StylebookPicker
-            onAdd={addItem}
-            onUndoLast={undoLast}
-            countsByItemId={counts}
-            onHeightChange={handlePickerHeightChange}
-          />
-        </div>
-
-        {/* Keyboard / screen-reader path for removing placements (the
-            canvas toolbar needs a pointer to select a piece first). */}
-        <section aria-labelledby="placed-pieces-heading" className="flex w-full flex-col gap-2">
-          <div className="flex items-center justify-between gap-2">
-            <h2
-              id="placed-pieces-heading"
-              className="font-heading text-sm font-semibold text-cute-text sm:text-base"
-            >
-              Placed pieces
-            </h2>
-            <p className="font-body text-xs text-cute-text-muted">
-              {state.items.length} {state.items.length === 1 ? "piece" : "pieces"}
-            </p>
+        <div className={`flex w-full flex-col gap-3 lg:flex-row lg:gap-6 ${PANELS_HEIGHT}`}>
+          {/* The canvas fills this panel (absolute, so it always has the
+              panel's explicit flex height to measure). */}
+          <div
+            className="relative min-h-0 w-full flex-[3] overflow-hidden rounded-cute-l border border-cute-border lg:flex-1"
+            data-testid="builder-canvas-area"
+          >
+            <div className="absolute inset-0">
+              <OutfitCanvas
+                items={state.items}
+                selectedId={state.selectedId}
+                onSelect={(placementId) => dispatch({ type: "select", id: placementId })}
+                onChangeTransform={(placementId, patch: TransformPatch) =>
+                  dispatch({ type: "update", id: placementId, patch })
+                }
+                onReorder={(placementId, direction) =>
+                  dispatch({ type: "reorder", id: placementId, direction })
+                }
+                onCopy={(placementId) =>
+                  dispatch({ type: "copy", id: placementId, newId: crypto.randomUUID() })
+                }
+                onRemove={(placementId) => dispatch({ type: "remove", id: placementId })}
+              />
+            </div>
           </div>
-          {state.items.length > 0 && (
-            <ul className="flex max-h-48 flex-col divide-y divide-cute-border overflow-y-auto rounded-cute-m border border-cute-border bg-cute-surface">
-              {state.items.map((placed) => (
-                <li key={placed.id} className="flex items-center justify-between gap-3 py-2 pr-2 pl-4">
-                  <span className="min-w-0 truncate font-body text-sm text-cute-text">
-                    {placed.name}
-                  </span>
-                  <button
-                    type="button"
-                    onClick={() => dispatch({ type: "remove", id: placed.id })}
-                    aria-label={`Remove ${placed.name}`}
-                    className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-cute-text-muted transition hover:bg-cute-danger/10 hover:text-cute-danger"
-                  >
-                    <X size={15} />
-                  </button>
-                </li>
-              ))}
-            </ul>
-          )}
-        </section>
+          <div
+            className="min-h-0 w-full flex-[2] lg:w-[28rem] lg:flex-none lg:shrink-0"
+            data-testid="builder-picker-panel"
+          >
+            <StylebookPicker onAdd={addItem} onUndoLast={undoLast} countsByItemId={counts} />
+          </div>
+        </div>
 
         <div className="flex w-full flex-col gap-4 border-t border-cute-border pt-4 sm:pt-6">
           <div className="flex flex-col gap-1.5">

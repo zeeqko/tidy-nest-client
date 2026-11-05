@@ -107,57 +107,6 @@ export function visibleTagChips(
   return chips;
 }
 
-// ---- Sheet snapping -------------------------------------------------------
-
-export type SnapName = "peek" | "half" | "full";
-export const PEEK_HEIGHT = 96;
-/** How far ahead (ms) release velocity projects the sheet before picking a snap. */
-const VELOCITY_PROJECTION_MS = 150;
-
-/**
- * Snap heights for a sheet inside a container `availableHeight` px tall (the
- * picker's positioned parent; the viewport only before it is measured).
- * Every snap fits inside the container, so the drag handle stays reachable.
- */
-export function snapHeights(availableHeight: number): Record<SnapName, number> {
-  const available = Math.max(0, availableHeight);
-  const peek = Math.min(PEEK_HEIGHT, available);
-  const half = Math.max(peek, Math.round(available * 0.5));
-  const full = Math.max(half, Math.round(available * 0.9));
-  return { peek, half, full };
-}
-
-/**
- * Nearest snap to the released height, biased by velocity (px/ms, positive =
- * sheet growing / finger moving up).
- */
-export function pickSnap(
-  height: number,
-  velocity: number,
-  heights: Record<SnapName, number>,
-): SnapName {
-  const projected = height + velocity * VELOCITY_PROJECTION_MS;
-  let best: SnapName = "peek";
-  let bestDist = Infinity;
-  for (const name of ["peek", "half", "full"] as const) {
-    const dist = Math.abs(heights[name] - projected);
-    if (dist < bestDist) {
-      best = name;
-      bestDist = dist;
-    }
-  }
-  return best;
-}
-
-export function clampSheetHeight(height: number, heights: Record<SnapName, number>): number {
-  return Math.min(heights.full, Math.max(heights.peek, height));
-}
-
-/** Tap on the handle: peek opens to half, anything else tucks back to peek. */
-export function nextSnapOnTap(current: SnapName): SnapName {
-  return current === "peek" ? "half" : "peek";
-}
-
 // ---- Filters and empty states ---------------------------------------------
 
 export function hasActiveFilters(filter: PickerFilter): boolean {

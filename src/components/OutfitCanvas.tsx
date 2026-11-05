@@ -1,6 +1,6 @@
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import type Konva from "konva";
-import { Image as KonvaImage, Layer, Stage, Transformer } from "react-konva";
+import { Image as KonvaImage, Layer, Rect, Stage, Transformer } from "react-konva";
 import { ArrowDownToLine, ArrowUpToLine, Copy, Shirt, Trash2 } from "lucide-react";
 import type { PlacedItem } from "./OutfitBuilderPage";
 import {
@@ -45,6 +45,13 @@ const DOTTED_BACKGROUND = {
   backgroundSize: "18px 18px",
 } as const;
 
+/** Konva node name of the interactive mode's board (the white framed
+ *  400x711 area pieces are kept inside). It is not a placed piece. */
+const BOARD_NODE_NAME = "board";
+const BOARD_FILL = "#ffffff";
+/** `--color-cute-border`, darkened a touch so the frame reads on the dots. */
+const BOARD_STROKE = "#DCC9C5";
+
 export type TransformPatch = Pick<PlacedItem, "x" | "y" | "width" | "height" | "rotation">;
 
 export interface OutfitCanvasProps {
@@ -61,12 +68,6 @@ export interface OutfitCanvasProps {
   /** Logical-space rect to fit into the container instead of the whole
    *  400x711 space. Read-only only (ignored when interactive). */
   viewRect?: LogicalRect;
-  /** Pixels at the bottom of the stage covered by the page's picker sheet. */
-  visibleBottomInset?: number;
-  /** Receives the logical-space rect visible above `visibleBottomInset`
-   *  (clamped into the 400x711 space) — `placeItem`'s `visible` argument.
-   *  Recomputed whenever the stage size or the inset changes. */
-  onVisibleRectChange?(rect: LogicalRect): void;
 }
 
 interface StageLayout {
@@ -99,18 +100,6 @@ function useHtmlImage(src?: string) {
   }, [src]);
 
   return image;
-}
-
-/** Logical rect visible above the bottom inset, clamped into the design space. */
-function visibleLogicalRect(layout: StageLayout, bottomInset: number): LogicalRect {
-  const { width, height, scale, offsetX, offsetY } = layout;
-  const toLogicalX = (px: number) => Math.min(DESIGN_WIDTH, Math.max(0, (px - offsetX) / scale));
-  const toLogicalY = (px: number) => Math.min(DESIGN_HEIGHT, Math.max(0, (px - offsetY) / scale));
-  const left = toLogicalX(0);
-  const right = toLogicalX(width);
-  const top = toLogicalY(0);
-  const bottom = Math.max(top, toLogicalY(height - Math.max(0, bottomInset)));
-  return { x: left, y: top, width: right - left, height: bottom - top };
 }
 
 interface PlacedNodeProps {
@@ -243,11 +232,12 @@ function PlacedNode({
 const TOOLBAR_BUTTON =
   "flex h-8 w-8 items-center justify-center rounded-full text-cute-text-muted transition hover:bg-cute-surface-alt hover:text-cute-text";
 
-/** Fixed full-screen arrange canvas for the Outfit Builder: a controlled
- *  Konva surface over the placed items and selection owned by the page.
- *  The Stage fills its container; the 400x711 logical space is fitted into
- *  it with `fitToScreen`. Items are selected by tap, moved by one-finger /
- *  mouse drag, and resized/rotated with the Transformer handles of the
+/** Fixed arrange canvas for the Outfit Builder: a controlled Konva surface
+ *  over the placed items and selection owned by the page. The Stage fills
+ *  its container; the 400x711 logical space is fitted into it with
+ *  `fitToScreen` and, when interactive, drawn as a white framed board so the
+ *  area pieces are kept inside is visible. Items are selected by tap, moved
+ *  by one-finger / mouse drag, and resized/rotated with the Transformer handles of the
  *  selected item; every move is clamped into the logical space. There is
  *  deliberately no wheel, pinch-to-pan or drag-on-empty-space handling:
  *  dragging empty space does nothing (and `touch-action: none` stops it
@@ -262,17 +252,14 @@ export function OutfitCanvas({
   onRemove,
   readOnly = false,
   viewRect,
-  visibleBottomInset = 0,
-  onVisibleRectChange,
 }: OutfitCanvasProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const trRef = useRef<Konva.Transformer>(null);
   const nodeRefs = useRef(new Map<string, Konva.Image>());
   const [stageSize, setStageSize] = useState({ width: 0, height: 0 });
 
-  // The container is always mounted (even with no items) so it can be
-  // measured on first render and the visible rect reported before the first
-  // item is placed.
+  // The container is always mounted (even with no items) so it is measured
+  // on first render, before the first item is placed.
   useLayoutEffect(() => {
     const el = containerRef.current;
     if (!el) return;
@@ -297,18 +284,6 @@ export function OutfitCanvas({
     readOnly && viewRect ? fitRectToScreen(stageSize, viewRect) : fitToScreen(stageSize);
   const layout: StageLayout = { ...stageSize, ...fit };
   const isMeasured = stageSize.width > 0 && stageSize.height > 0 && fit.scale > 0;
-
-  const onVisibleRectChangeRef = useRef(onVisibleRectChange);
-  onVisibleRectChangeRef.current = onVisibleRectChange;
-  useEffect(() => {
-    if (!isMeasured) return;
-    onVisibleRectChangeRef.current?.(
-      visibleLogicalRect(
-        { ...stageSize, ...fitToScreen(stageSize) },
-        visibleBottomInset,
-      ),
-    );
-  }, [isMeasured, stageSize, visibleBottomInset]);
 
   const selectedItem =
     selectedId !== null ? (items.find((item) => item.id === selectedId) ?? null) : null;
@@ -360,6 +335,24 @@ export function OutfitCanvas({
           onTouchStart={readOnly ? undefined : handleStagePointerDown}
         >
           <Layer listening={!readOnly}>
+            {/* Beneath every piece; not listening, so a tap on empty board
+                still hits the Stage and deselects. */}
+            {!readOnly && (
+              <Rect
+                name={BOARD_NODE_NAME}
+                x={0}
+                y={0}
+                width={DESIGN_WIDTH}
+                height={DESIGN_HEIGHT}
+                fill={BOARD_FILL}
+                stroke={BOARD_STROKE}
+                strokeWidth={1.5}
+                strokeScaleEnabled={false}
+                cornerRadius={6}
+                listening={false}
+                perfectDrawEnabled={false}
+              />
+            )}
             {ordered.map((item) => (
               <PlacedNode
                 key={item.id}
@@ -393,8 +386,7 @@ export function OutfitCanvas({
 
       {isEmpty && (
         <div
-          className="pointer-events-none absolute inset-x-0 top-0 flex flex-col items-center justify-center gap-2 p-6 text-center"
-          style={{ bottom: Math.max(0, visibleBottomInset) }}
+          className="pointer-events-none absolute inset-0 flex flex-col items-center justify-center gap-2 p-6 text-center"
         >
           <Shirt size={36} className="text-cute-text-muted" />
           <p className="font-body text-sm text-cute-text-muted">
@@ -407,8 +399,7 @@ export function OutfitCanvas({
 
       {!readOnly && selectedItem && (
         <div
-          className="absolute left-1/2 flex max-w-[calc(100%-1.5rem)] -translate-x-1/2 items-center gap-2 rounded-full border border-cute-border bg-cute-surface py-1.5 pr-1.5 pl-3 shadow-sm"
-          style={{ bottom: Math.max(0, visibleBottomInset) + 12 }}
+          className="absolute bottom-3 left-1/2 flex max-w-[calc(100%-1.5rem)] -translate-x-1/2 items-center gap-2 rounded-full border border-cute-border bg-cute-surface py-1.5 pr-1.5 pl-3 shadow-sm"
           role="toolbar"
           aria-label={`${selectedItem.name} actions`}
         >

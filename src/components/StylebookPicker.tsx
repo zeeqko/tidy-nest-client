@@ -1,4 +1,4 @@
-import { useEffect, useLayoutEffect, useMemo, useRef, useState, type KeyboardEvent, type PointerEvent, type ReactNode } from "react";
+import { useMemo, useState, type ReactNode } from "react";
 import { Check, FolderCog, PackageSearch, Search, X } from "lucide-react";
 import { EmptyState } from "./EmptyState";
 import { useCategories } from "../hooks/useCategories";
@@ -7,18 +7,13 @@ import { filterItems, type PickerFilter } from "../lib/pickerFilter";
 import {
   STYLEBOOK_GROUPS,
   buildGroupMap,
-  clampSheetHeight,
   clearedFilter,
   emptyStateMessage,
   isTagSelected,
   mergedTagCounts,
-  nextSnapOnTap,
-  pickSnap,
-  snapHeights,
   subcategoryChips,
   toggleTag,
   visibleTagChips,
-  type SnapName,
 } from "../lib/pickerModel";
 import type { StylebookGroup } from "../lib/placement";
 import type { OrganizingItem } from "../types";
@@ -30,14 +25,9 @@ interface StylebookPickerProps {
   onUndoLast(itemId: string): void;
   /** How many copies of each item are on the canvas. */
   countsByItemId: Record<string, number>;
-  /** Current settled sheet height in px (also fired on mount and container resize). */
-  onHeightChange?(px: number): void;
 }
 
 const TOP_TAG_LIMIT = 6;
-const TAP_SLOP_PX = 6;
-
-const viewportHeight = () => (typeof window === "undefined" ? 800 : window.innerHeight);
 
 function PickerTile({
   item,
@@ -81,7 +71,7 @@ function PickerTile({
             </div>
           )}
         </div>
-        <p className="truncate px-0.5 font-body text-[11px] font-medium text-cute-text">{item.name}</p>
+        <p className="truncate px-0.5 font-body text-[10px] font-medium text-cute-text lg:text-xs">{item.name}</p>
       </button>
       {onCanvas && (
         <button
@@ -134,11 +124,11 @@ function Chip({
 }
 
 /**
- * Bottom-sheet item picker for the Stylebook canvas. Overlays the bottom of its
- * positioned container (never resizes the canvas) with three snap heights.
- * Only the drag handle captures touch; the tile grid scrolls natively.
+ * Docked item picker for the Stylebook builder: a plain panel that fills its
+ * parent (the page sizes it, beside the canvas on desktop and below it on a
+ * phone). The filter controls stay put and only the tile grid scrolls.
  */
-export function StylebookPicker({ onAdd, onUndoLast, countsByItemId, onHeightChange }: StylebookPickerProps) {
+export function StylebookPicker({ onAdd, onUndoLast, countsByItemId }: StylebookPickerProps) {
   const { categories, apiCategories, loading: categoriesLoading, error: categoriesError } = useCategories();
   const { items, loading: itemsLoading, error: itemsError } = useItems(apiCategories);
 
@@ -149,106 +139,6 @@ export function StylebookPicker({ onAdd, onUndoLast, countsByItemId, onHeightCha
     query: "",
   });
   const [moreTagsOpen, setMoreTagsOpen] = useState(false);
-
-  // ---- Sheet height / snapping ----
-  // Snaps are sized from the positioned parent the sheet overlays (it is
-  // overflow-hidden in the builder, so a viewport-sized snap would clip the
-  // handle). The viewport height is only the fallback before it is measured.
-  const sectionRef = useRef<HTMLElement>(null);
-  const [vh, setVh] = useState(viewportHeight);
-  const [containerHeight, setContainerHeight] = useState<number | null>(null);
-  const [snap, setSnap] = useState<SnapName>("half");
-  const [dragHeight, setDragHeight] = useState<number | null>(null);
-  const availableHeight = containerHeight ?? vh;
-  const heights = useMemo(() => snapHeights(availableHeight), [availableHeight]);
-  const settledHeight = heights[snap];
-  const height = dragHeight ?? settledHeight;
-  const drag = useRef<{ startY: number; startHeight: number; lastY: number; lastT: number; velocity: number; moved: boolean } | null>(null);
-
-  useEffect(() => {
-    const onResize = () => setVh(viewportHeight());
-    window.addEventListener("resize", onResize);
-    return () => window.removeEventListener("resize", onResize);
-  }, []);
-
-  useLayoutEffect(() => {
-    const parent = sectionRef.current?.parentElement;
-    if (!parent) return;
-    const update = () => {
-      const h = parent.clientHeight;
-      if (h > 0) setContainerHeight((prev) => (prev === h ? prev : h));
-    };
-    update();
-    const observer = new ResizeObserver(update);
-    observer.observe(parent);
-    return () => observer.disconnect();
-  }, []);
-
-  // Fires on mount, on every snap change and whenever the container (or,
-  // before it is measured, the viewport) resizes, since settledHeight depends
-  // on availableHeight. Intermediate drag heights are not reported.
-  useEffect(() => {
-    onHeightChange?.(settledHeight);
-  }, [settledHeight, onHeightChange]);
-
-  const onHandlePointerDown = (event: PointerEvent<HTMLButtonElement>) => {
-    event.currentTarget.setPointerCapture(event.pointerId);
-    drag.current = {
-      startY: event.clientY,
-      startHeight: settledHeight,
-      lastY: event.clientY,
-      lastT: event.timeStamp,
-      velocity: 0,
-      moved: false,
-    };
-  };
-
-  const onHandlePointerMove = (event: PointerEvent<HTMLButtonElement>) => {
-    const d = drag.current;
-    if (!d) return;
-    if (Math.abs(event.clientY - d.startY) > TAP_SLOP_PX) d.moved = true;
-    const dt = event.timeStamp - d.lastT;
-    if (dt > 0) d.velocity = (d.lastY - event.clientY) / dt; // px/ms, positive = growing
-    d.lastY = event.clientY;
-    d.lastT = event.timeStamp;
-    if (d.moved) setDragHeight(clampSheetHeight(d.startHeight + (d.startY - event.clientY), heights));
-  };
-
-  const onHandlePointerUp = (event: PointerEvent<HTMLButtonElement>) => {
-    const d = drag.current;
-    drag.current = null;
-    if (!d) return;
-    if (event.currentTarget.hasPointerCapture(event.pointerId)) {
-      event.currentTarget.releasePointerCapture(event.pointerId);
-    }
-    if (!d.moved) {
-      setSnap((current) => nextSnapOnTap(current));
-    } else {
-      const released = clampSheetHeight(d.startHeight + (d.startY - event.clientY), heights);
-      setSnap(pickSnap(released, d.velocity, heights));
-    }
-    setDragHeight(null);
-  };
-
-  const onHandlePointerCancel = () => {
-    drag.current = null;
-    setDragHeight(null);
-  };
-
-  const onHandleKeyDown = (event: KeyboardEvent<HTMLButtonElement>) => {
-    const order: SnapName[] = ["peek", "half", "full"];
-    const i = order.indexOf(snap);
-    if (event.key === "ArrowUp") {
-      event.preventDefault();
-      setSnap(order[Math.min(order.length - 1, i + 1)]);
-    } else if (event.key === "ArrowDown") {
-      event.preventDefault();
-      setSnap(order[Math.max(0, i - 1)]);
-    } else if (event.key === "Enter" || event.key === " ") {
-      event.preventDefault();
-      setSnap(nextSnapOnTap(snap));
-    }
-  };
 
   // ---- Filtering ----
   const groupMap = useMemo(() => buildGroupMap(categories), [categories]);
@@ -301,7 +191,7 @@ export function StylebookPicker({ onAdd, onUndoLast, countsByItemId, onHeightCha
     );
   } else {
     body = (
-      <div className="grid grid-cols-4 gap-2">
+      <div className="grid grid-cols-4 gap-2 lg:gap-3">
         {results.map((item) => (
           <PickerTile
             key={item.id}
@@ -319,28 +209,10 @@ export function StylebookPicker({ onAdd, onUndoLast, countsByItemId, onHeightCha
 
   return (
     <section
-      ref={sectionRef}
       aria-label="Add pieces"
-      className={`absolute inset-x-0 bottom-0 z-30 flex flex-col overflow-hidden rounded-t-[24px] border border-b-0 border-cute-border bg-cute-surface shadow-[0_-8px_24px_rgba(74,53,56,0.12)] ${
-        dragHeight === null ? "transition-[height] duration-200 ease-out" : ""
-      }`}
-      style={{ height }}
+      className="flex h-full min-h-0 w-full flex-col overflow-hidden rounded-cute-l border border-cute-border bg-cute-surface"
     >
-      <button
-        type="button"
-        aria-label={`Resize picker (currently ${snap})`}
-        onPointerDown={onHandlePointerDown}
-        onPointerMove={onHandlePointerMove}
-        onPointerUp={onHandlePointerUp}
-        onPointerCancel={onHandlePointerCancel}
-        onKeyDown={onHandleKeyDown}
-        style={{ touchAction: "none" }}
-        className="flex h-6 w-full shrink-0 cursor-grab items-center justify-center active:cursor-grabbing"
-      >
-        <span className="h-1 w-9 rounded-full bg-cute-border" />
-      </button>
-
-      <div className="flex shrink-0 flex-col gap-2 px-3.5 pb-2">
+      <div className="flex shrink-0 flex-col gap-1.5 px-3 pt-2.5 pb-2 lg:gap-2.5 lg:px-4 lg:pt-4 lg:pb-3">
         <div role="group" aria-label="Stylebook group" className="flex w-full rounded-full bg-cute-surface-alt p-0.5">
           {STYLEBOOK_GROUPS.map((g) => {
             const active = g.id === filter.group;
@@ -379,42 +251,47 @@ export function StylebookPicker({ onAdd, onUndoLast, countsByItemId, onHeightCha
               </p>
             )}
 
-            {!queryActive && (
-              <div className="-mx-3.5 flex gap-1.5 overflow-x-auto px-3.5 pb-0.5">
-                <Chip label="All" active={filter.subcategoryId === null} onClick={() => selectSub(null)} />
-                {subChips.map((s) => (
-                  <Chip
-                    key={s.id}
-                    label={s.name}
-                    active={filter.subcategoryId === s.id}
-                    onClick={() => selectSub(s.id)}
-                  />
-                ))}
-              </div>
-            )}
+            {/* Below lg (picker docked under the canvas, little height to
+                spare) subcategory and tag chips share one horizontally
+                scrolling row; from lg each gets its own row. */}
+            <div className="-mx-3 flex items-center gap-1.5 overflow-x-auto px-3 pb-0.5 lg:mx-0 lg:flex-col lg:items-stretch lg:gap-2 lg:overflow-visible lg:px-0 lg:pb-0">
+              {!queryActive && (
+                <div className="flex shrink-0 gap-1.5 lg:-mx-4 lg:overflow-x-auto lg:px-4 lg:pb-0.5">
+                  <Chip label="All" active={filter.subcategoryId === null} onClick={() => selectSub(null)} />
+                  {subChips.map((s) => (
+                    <Chip
+                      key={s.id}
+                      label={s.name}
+                      active={filter.subcategoryId === s.id}
+                      onClick={() => selectSub(s.id)}
+                    />
+                  ))}
+                </div>
+              )}
 
-            {(tagChips.length > 0 || tagCounts.length > 0) && (
-              <div className="-mx-3.5 flex items-center gap-1.5 overflow-x-auto px-3.5 pb-0.5">
-                <span className="shrink-0 font-body text-[11px] font-bold text-cute-text-muted">Tags</span>
-                {tagChips.map((t) => (
-                  <Chip
-                    key={t.name.toLowerCase()}
-                    label={`#${t.name}`}
-                    variant="tag"
-                    active={t.active}
-                    onClick={() => onToggleTag(t.name)}
-                    trailing={t.active ? <X size={12} strokeWidth={3} aria-hidden /> : undefined}
-                  />
-                ))}
-                {tagCounts.length > 0 && (
-                  <Chip
-                    label={moreTagsOpen ? "Fewer tags ‹" : "More tags ›"}
-                    active={false}
-                    onClick={() => setMoreTagsOpen((open) => !open)}
-                  />
-                )}
-              </div>
-            )}
+              {(tagChips.length > 0 || tagCounts.length > 0) && (
+                <div className="flex shrink-0 items-center gap-1.5 lg:-mx-4 lg:overflow-x-auto lg:px-4 lg:pb-0.5">
+                  <span className="shrink-0 pl-1 font-body text-[11px] font-bold text-cute-text-muted lg:pl-0">Tags</span>
+                  {tagChips.map((t) => (
+                    <Chip
+                      key={t.name.toLowerCase()}
+                      label={`#${t.name}`}
+                      variant="tag"
+                      active={t.active}
+                      onClick={() => onToggleTag(t.name)}
+                      trailing={t.active ? <X size={12} strokeWidth={3} aria-hidden /> : undefined}
+                    />
+                  ))}
+                  {tagCounts.length > 0 && (
+                    <Chip
+                      label={moreTagsOpen ? "Fewer tags ‹" : "More tags ›"}
+                      active={false}
+                      onClick={() => setMoreTagsOpen((open) => !open)}
+                    />
+                  )}
+                </div>
+              )}
+            </div>
 
             {moreTagsOpen && tagCounts.length > 0 && (
               <div
@@ -436,7 +313,12 @@ export function StylebookPicker({ onAdd, onUndoLast, countsByItemId, onHeightCha
         )}
       </div>
 
-      <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-3.5 pb-4">{body}</div>
+      <div
+        className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-3 pb-3 lg:px-4 lg:pb-4"
+        data-testid="picker-grid-scroller"
+      >
+        {body}
+      </div>
     </section>
   );
 }

@@ -3,14 +3,10 @@ import type { Category, OrganizingItem } from "../types";
 import type { PickerFilter } from "./pickerFilter";
 import {
   buildGroupMap,
-  clampSheetHeight,
   clearedFilter,
   emptyStateMessage,
   hasActiveFilters,
   mergedTagCounts,
-  nextSnapOnTap,
-  pickSnap,
-  snapHeights,
   subcategoryChips,
   toggleTag,
   visibleTagChips,
@@ -106,58 +102,6 @@ describe("toggleTag / visibleTagChips", () => {
       { name: "c", count: 1 },
     ];
     expect(visibleTagChips(top, [], 2).map((c) => c.name)).toEqual(["a", "b"]);
-  });
-});
-
-describe("snapping", () => {
-  const heights = snapHeights(800);
-  it("computes peek/half/full", () => {
-    expect(heights).toEqual({ peek: 96, half: 400, full: 720 });
-  });
-  it("keeps the full snap within the container", () => {
-    for (const container of [668, 692, 450, 200]) {
-      expect(snapHeights(container).full).toBeLessThanOrEqual(container);
-    }
-  });
-  it("keeps half below full for real container sizes", () => {
-    for (const container of [668, 692, 450]) {
-      const h = snapHeights(container);
-      expect(h.half).toBeLessThan(h.full);
-    }
-  });
-  it("never makes peek taller than a tiny container", () => {
-    const h = snapHeights(60);
-    expect(h.peek).toBeLessThanOrEqual(60);
-    expect(h.half).toBeLessThanOrEqual(60);
-    expect(h.full).toBeLessThanOrEqual(60);
-    expect(snapHeights(0)).toEqual({ peek: 0, half: 0, full: 0 });
-  });
-  it("follows a changed container height", () => {
-    expect(snapHeights(668)).toEqual({ peek: 96, half: 334, full: 601 });
-    expect(snapHeights(500)).toEqual({ peek: 96, half: 250, full: 450 });
-  });
-  it("never lets half/full drop below peek on tiny viewports", () => {
-    const h = snapHeights(100);
-    expect(h.half).toBeGreaterThanOrEqual(96);
-    expect(h.full).toBeGreaterThanOrEqual(h.half);
-  });
-  it("picks the nearest snap with no velocity", () => {
-    expect(pickSnap(150, 0, heights)).toBe("peek");
-    expect(pickSnap(380, 0, heights)).toBe("half");
-    expect(pickSnap(600, 0, heights)).toBe("full");
-  });
-  it("biases toward the direction of a flick", () => {
-    expect(pickSnap(420, 2, heights)).toBe("full");
-    expect(pickSnap(380, -2, heights)).toBe("peek");
-  });
-  it("clamps drag height to [peek, full]", () => {
-    expect(clampSheetHeight(10, heights)).toBe(96);
-    expect(clampSheetHeight(5000, heights)).toBe(720);
-  });
-  it("tap toggles between peek and half", () => {
-    expect(nextSnapOnTap("peek")).toBe("half");
-    expect(nextSnapOnTap("half")).toBe("peek");
-    expect(nextSnapOnTap("full")).toBe("peek");
   });
 });
 

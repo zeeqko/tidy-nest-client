@@ -1,6 +1,6 @@
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import type Konva from "konva";
-import { Image as KonvaImage, Layer, Rect, Stage, Transformer } from "react-konva";
+import { Image as KonvaImage, Layer, Stage, Transformer } from "react-konva";
 import { ArrowDownToLine, ArrowUpToLine, Copy, Shirt, Trash2 } from "lucide-react";
 import type { PlacedItem } from "./OutfitBuilderPage";
 import {
@@ -19,6 +19,24 @@ import {
  *  scale plus a centring offset (letterboxed). Resizing the window or
  *  rotating the device only changes that scale/offset, never item positions. */
 const MIN_SIZE = 24;
+
+/** Pointer travel (px) before a press on a piece becomes a drag, so a tap
+ *  with a little finger jitter stays a tap instead of a (no-op) move. */
+const DRAG_DISTANCE = 4;
+
+/** Phones/tablets: the Transformer anchors are the only resize/rotate
+ *  control, so make them finger-sized there. Evaluated once; environments
+ *  without `matchMedia` (SSR, unit tests) count as fine pointers. */
+const COARSE_POINTER =
+  typeof window !== "undefined" &&
+  typeof window.matchMedia === "function" &&
+  window.matchMedia("(pointer: coarse)").matches;
+const ANCHOR_SIZE = COARSE_POINTER ? 20 : 10;
+// Default rotate-handle offset (50) can land off-stage for pieces near the
+// top edge; a smaller offset keeps it reachable while clear of the corner
+// anchors (pushed out a little with the larger touch anchors so the two
+// never touch).
+const ROTATE_ANCHOR_OFFSET = COARSE_POINTER ? 24 : 16;
 
 /** Dotted backdrop drawn behind the (transparent) Stage, across the whole
  *  stage area including any letterbox margins. */
@@ -102,7 +120,7 @@ interface PlacedNodeProps {
   layout: StageLayout;
   onSelect: () => void;
   onChangeTransform: (patch: TransformPatch) => void;
-  registerRef: (node: Konva.Image | Konva.Rect | null) => void;
+  registerRef: (node: Konva.Image | null) => void;
 }
 
 /** One placed piece on the canvas. Konva's default rotation pivot is a
@@ -124,7 +142,8 @@ function PlacedNode({
 }: PlacedNodeProps) {
   // New placements are sized to their image's real aspect by the builder
   // before they are added, so the canvas draws the image into the stored box
-  // as-is.
+  // as-is. Until the image loads (or when there is none) the same node draws
+  // the fallback fill instead.
   const image = useHtmlImage(item.cutoutURL ?? item.imageURL);
 
   /** Clamp a logical placement into the design space, move the node to the
@@ -197,6 +216,7 @@ function PlacedNode({
     rotation: item.rotation,
     cornerRadius: 12,
     draggable: !readOnly,
+    dragDistance: DRAG_DISTANCE,
     stroke: !readOnly && isSelected ? "#99606E" : undefined,
     strokeWidth: !readOnly && isSelected ? 2 : 0,
     onClick: readOnly ? undefined : onSelect,
@@ -207,10 +227,17 @@ function PlacedNode({
     onTransformEnd: readOnly ? undefined : handleTransformEnd,
   };
 
-  if (image) {
-    return <KonvaImage ref={registerRef} image={image} {...shared} />;
-  }
-  return <Rect ref={registerRef} fill={item.iconBg} {...shared} />;
+  // Always the same Konva.Image node (never swapped for a placeholder Rect
+  // when the image arrives), so the Transformer stays attached to a live node.
+  // Konva.Image paints its fill when it has no image.
+  return (
+    <KonvaImage
+      ref={registerRef}
+      image={image ?? undefined}
+      fill={image ? undefined : item.iconBg}
+      {...shared}
+    />
+  );
 }
 
 const TOOLBAR_BUTTON =
@@ -240,7 +267,7 @@ export function OutfitCanvas({
 }: OutfitCanvasProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const trRef = useRef<Konva.Transformer>(null);
-  const nodeRefs = useRef(new Map<string, Konva.Image | Konva.Rect>());
+  const nodeRefs = useRef(new Map<string, Konva.Image>());
   const [stageSize, setStageSize] = useState({ width: 0, height: 0 });
 
   // The container is always mounted (even with no items) so it can be
@@ -294,9 +321,20 @@ export function OutfitCanvas({
     transformer.getLayer()?.batchDraw();
   }, [selectedItem, items, readOnly]);
 
+  /** A piece is being dragged or the Transformer is mid resize/rotate.
+   *  (Checked on our own nodes rather than via the global `Konva` object so
+   *  this module keeps a type-only konva import.) */
+  const isGestureActive = () =>
+    Boolean(trRef.current?.isTransforming()) ||
+    [...nodeRefs.current.values()].some((node) => node.isDragging());
+
   const handleStagePointerDown = (event: Konva.KonvaEventObject<MouseEvent | TouchEvent>) => {
-    // Tap/click on empty space (the Stage itself, not a shape) deselects.
-    if (event.target === event.target.getStage()) onSelect(null);
+    // Tap/click on empty space (the Stage itself, not a shape) deselects —
+    // but not a second finger landing mid-gesture, nor anything during a drag.
+    if (event.target !== event.target.getStage()) return;
+    if ("touches" in event.evt && event.evt.touches.length > 1) return;
+    if (isGestureActive()) return;
+    onSelect(null);
   };
 
   const ordered = [...items].sort((a, b) => a.zIndex - b.zIndex);
@@ -342,10 +380,8 @@ export function OutfitCanvas({
                 ref={trRef}
                 rotateEnabled
                 enabledAnchors={["top-left", "top-right", "bottom-left", "bottom-right"]}
-                // Default rotate-handle offset (50) can land off-stage for
-                // pieces near the top edge; a smaller offset keeps it
-                // reachable while clear of the corner anchors.
-                rotateAnchorOffset={16}
+                anchorSize={ANCHOR_SIZE}
+                rotateAnchorOffset={ROTATE_ANCHOR_OFFSET}
                 boundBoxFunc={(oldBox, newBox) =>
                   newBox.width < MIN_SIZE || newBox.height < MIN_SIZE ? oldBox : newBox
                 }
@@ -383,7 +419,7 @@ export function OutfitCanvas({
             <button
               type="button"
               onClick={() => onReorder(selectedItem.id, "back")}
-              aria-label="Send backward"
+              aria-label="Send to back"
               className={TOOLBAR_BUTTON}
             >
               <ArrowDownToLine size={15} />

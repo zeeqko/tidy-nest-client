@@ -16,6 +16,7 @@ import type { Rect } from "../lib/canvasSpace";
 import { createCutoutQueue } from "../lib/cutoutQueue";
 import { loadImageAspect } from "../lib/imageAspect";
 import { placeItem, startingZIndex } from "../lib/placement";
+import { normalizeZIndices } from "../lib/zIndex";
 import { buildGroupMap } from "../lib/pickerModel";
 import { countsByItemId, lastPlacementId } from "../lib/placementCounts";
 import { createSerialChain } from "../lib/serialChain";
@@ -226,11 +227,12 @@ export function OutfitBuilderPage() {
     setSaveError(null);
     // Built explicitly (never by spreading an `ApiLook`) — `name`/`imageURL`/
     // `cutoutURL` on each item are response-only and must not be sent back on
-    // write. Same shape for both create and edit.
+    // write. Same shape for both create and edit. Z-indexes are saved dense
+    // (0..n-1 in stacking order) rather than the editor's sparse zone bands.
     const payload: NewLook = {
       name: trimmedName,
       occasion,
-      items: state.items.map(({ itemId, x, y, width, height, rotation, zIndex }) => ({
+      items: normalizeZIndices(state.items).map(({ itemId, x, y, width, height, rotation, zIndex }) => ({
         itemId,
         x,
         y,
@@ -387,7 +389,7 @@ export function OutfitBuilderPage() {
             </p>
           </div>
           {state.items.length > 0 && (
-            <ul className="flex flex-col divide-y divide-cute-border rounded-cute-m border border-cute-border bg-cute-surface">
+            <ul className="flex max-h-48 flex-col divide-y divide-cute-border overflow-y-auto rounded-cute-m border border-cute-border bg-cute-surface">
               {state.items.map((placed) => (
                 <li key={placed.id} className="flex items-center justify-between gap-3 py-2 pr-2 pl-4">
                   <span className="min-w-0 truncate font-body text-sm text-cute-text">

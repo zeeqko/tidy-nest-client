@@ -105,6 +105,33 @@ describe("editorReducer", () => {
     expect(s.past).toHaveLength(1);
   });
 
+  it("update that changes nothing returns the same state and pushes no history", () => {
+    const s = editorReducer(initialEditorState([mk("a", { rotation: 15 })]), { type: "select", id: "a" });
+    const same = editorReducer(s, {
+      type: "update",
+      id: "a",
+      patch: { x: 100, y: 100, width: 50, height: 50, rotation: 15 },
+    });
+    expect(same).toBe(s);
+    expect(same.past).toHaveLength(0);
+    expect(editorReducer(s, { type: "update", id: "a", patch: {} })).toBe(s);
+  });
+
+  it("update clamped back onto the current position is a no-op", () => {
+    const s = initialEditorState([mk("a", { x: DESIGN_WIDTH - 50 })]);
+    expect(editorReducer(s, { type: "update", id: "a", patch: { x: 9999 } })).toBe(s);
+  });
+
+  it("a real change to any single transform field still commits", () => {
+    const s = initialEditorState([mk("a")]);
+    for (const patch of [{ x: 101 }, { y: 99 }, { width: 51 }, { height: 49 }, { rotation: 1 }]) {
+      const n = editorReducer(s, { type: "update", id: "a", patch });
+      expect(n, JSON.stringify(patch)).not.toBe(s);
+      expect(n.past).toHaveLength(1);
+      expect(n.items[0]).toMatchObject(patch);
+    }
+  });
+
   it("update of unknown id is a no-op", () => {
     const s = initialEditorState([mk("a")]);
     expect(editorReducer(s, { type: "update", id: "zz", patch: { x: 1 } })).toBe(s);

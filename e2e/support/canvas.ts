@@ -18,6 +18,9 @@ export interface CanvasNode {
   height: number;
   rotation: number;
   fill: string | null;
+  /** Whether a Konva.Image node has its picture loaded (false while it still
+   *  draws the fallback fill). */
+  hasImage?: boolean;
 }
 
 export interface Point {
@@ -43,6 +46,7 @@ export async function canvasNodes(page: Page, stageIndex = 0): Promise<CanvasNod
       height: n.height(),
       rotation: n.rotation(),
       fill: typeof n.fill === "function" ? (n.fill() ?? null) : null,
+      hasImage: typeof n.image === "function" ? Boolean(n.image()) : false,
     }));
   }, stageIndex);
 }
@@ -79,6 +83,23 @@ export async function rotaterPoint(page: Page, stageIndex = 0): Promise<Point> {
     return { x: rect.left + r.x + r.width / 2, y: rect.top + r.y + r.height / 2 };
   }, stageIndex);
   expect(point, "rotate handle is shown for the selected piece").not.toBeNull();
+  return point!;
+}
+
+/** Viewport point at the centre of a Transformer anchor (e.g. "top-left") of the selected piece. */
+export async function anchorPoint(page: Page, anchor: string, stageIndex = 0): Promise<Point> {
+  const point = await page.evaluate(
+    ([index, name]) => {
+      const stage = (window as any).Konva.stages[index];
+      const node = stage.findOne("Transformer")?.findOne(`.${name}`);
+      if (!node || !node.isVisible()) return null;
+      const r = node.getClientRect();
+      const rect = stage.container().getBoundingClientRect();
+      return { x: rect.left + r.x + r.width / 2, y: rect.top + r.y + r.height / 2 };
+    },
+    [stageIndex, anchor] as const,
+  );
+  expect(point, `${anchor} anchor is shown for the selected piece`).not.toBeNull();
   return point!;
 }
 

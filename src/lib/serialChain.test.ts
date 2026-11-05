@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { createSerialChain } from "./serialChain";
 
 function deferred() {
@@ -26,17 +26,26 @@ describe("createSerialChain", () => {
     expect(order).toEqual(["first", "second"]);
   });
 
-  it("keeps running later tasks after one throws or rejects", async () => {
-    const chain = createSerialChain();
-    const order: string[] = [];
-    void chain.run(() => {
-      throw new Error("boom");
-    });
-    void chain.run(() => Promise.reject(new Error("nope")));
-    await chain.run(() => {
-      order.push("after");
-    });
-    expect(order).toEqual(["after"]);
+  it("keeps running later tasks after one throws or rejects, warning about each failure", async () => {
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    try {
+      const chain = createSerialChain();
+      const order: string[] = [];
+      const boom = new Error("boom");
+      const nope = new Error("nope");
+      void chain.run(() => {
+        throw boom;
+      });
+      void chain.run(() => Promise.reject(nope));
+      await chain.run(() => {
+        order.push("after");
+      });
+      expect(order).toEqual(["after"]);
+      expect(warn).toHaveBeenCalledTimes(2);
+      expect(warn.mock.calls.map((c) => c[1])).toEqual([boom, nope]);
+    } finally {
+      warn.mockRestore();
+    }
   });
 
   it("runs the same task twice when submitted twice", async () => {

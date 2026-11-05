@@ -10,9 +10,11 @@ import {
   DESIGN_WIDTH,
   addPiece,
   addTile,
+  anchorPoint,
   canvasNodes,
   countBadge,
   emptyCanvasPoint,
+  mouseDrag,
   nodeClientRects,
   nodeScreenCenter,
   openBuilder,
@@ -334,7 +336,7 @@ test.describe("fixed canvas", () => {
     // Detail page: every piece is drawn fully inside the (on-screen) canvas.
     await expect(page.getByText("3 pieces").filter({ visible: true })).toBeVisible();
     await expect.poll(async () => (await canvasNodes(page)).length).toBe(3);
-    await expect.poll(async () => (await canvasNodes(page)).filter((n) => n.cls === "Image").length).toBe(3);
+    await expect.poll(async () => (await canvasNodes(page)).filter((n) => n.hasImage).length).toBe(3);
     const { stage, container, rects } = await nodeClientRects(page);
     const viewport = page.viewportSize()!;
     expect(container.x).toBeGreaterThanOrEqual(0);
@@ -387,6 +389,38 @@ test.describe("fixed canvas", () => {
     await expect(page).toHaveURL(new RegExp(`/stylebook/${id}$`));
     const second = await userApi.look(id);
     expect(second.items.map(transformOf)).toEqual(first.items.map(transformOf));
+  });
+});
+
+test.describe("canvas toolbar", () => {
+  test("(k) after Copy, the Transformer resizes the copy and leaves the original untouched", async ({ authedPage: page }, testInfo) => {
+    test.skip(testInfo.project.name !== "desktop", "mouse-driven Transformer handle drag");
+    await openBuilder(page);
+    await addPiece(page, linen, 1);
+    await expect.poll(async () => (await canvasNodes(page))[0].hasImage).toBe(true);
+
+    const centre = await nodeScreenCenter(page, 0);
+    await page.mouse.click(centre.x, centre.y);
+    const toolbar = page.getByRole("toolbar", { name: `${linen} actions` });
+    await expect(toolbar).toBeVisible();
+    await toolbar.getByRole("button", { name: `Copy ${linen}` }).click();
+    await expect(placedRegion(page).getByRole("listitem")).toHaveCount(2);
+    await expect.poll(async () => (await canvasNodes(page)).length).toBe(2);
+    // Let the copy's image load: before the fix this swapped the copy's node
+    // and left the Transformer on the destroyed one.
+    await expect.poll(async () => (await canvasNodes(page))[1].hasImage).toBe(true);
+    await page.waitForTimeout(200);
+    const [original, copy] = await canvasNodes(page);
+    expect(copy.x !== original.x || copy.y !== original.y, "the copy (top, last node) is offset from the original").toBe(true);
+
+    // Drag the copy's top-left handle inward: the copy shrinks.
+    const handle = await anchorPoint(page, "top-left");
+    await mouseDrag(page, handle, { x: handle.x + 40, y: handle.y + 40 }, 10);
+    await page.waitForTimeout(300);
+    const after = await canvasNodes(page);
+    expect(after).toHaveLength(2);
+    expect(after[1].width, "copy was resized").toBeLessThan(copy.width - 5);
+    expectSameNodes([after[0]], [original]);
   });
 });
 
@@ -512,8 +546,8 @@ test.describe("photo-less items and hidden categories", () => {
     await page.waitForTimeout(2000); // give any (wrongly) queued cutout job time to start
     const nodes = await canvasNodes(page);
     expect(nodes).toHaveLength(1);
-    expect(nodes[0].cls, "photo-less piece is drawn as a filled tile, not an image").toBe("Rect");
-    expect(nodes[0].fill).toBeTruthy();
+    expect(nodes[0].hasImage, "photo-less piece has no picture").toBe(false);
+    expect(nodes[0].fill, "photo-less piece is drawn as a filled tile").toBeTruthy();
 
     const after = requests.slice(before);
     const path = (u: string) => new URL(u).pathname;

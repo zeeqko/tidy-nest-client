@@ -25,6 +25,7 @@ export type EditorAction =
 
 const HISTORY_LIMIT = 100;
 const COPY_OFFSET = 16;
+const TRANSFORM_KEYS = ["x", "y", "width", "height", "rotation"] as const;
 
 export function initialEditorState(items: PlacedItem[] = []): EditorState {
   return { items, selectedId: null, past: [], future: [] };
@@ -43,10 +44,15 @@ export function editorReducer(state: EditorState, action: EditorAction): EditorS
       return commit(state, [...state.items, action.item]);
 
     case "update": {
-      if (!state.items.some((i) => i.id === action.id)) return state;
+      const current = state.items.find((i) => i.id === action.id);
+      if (!current) return state;
+      const next = clampItem({ ...current, ...action.patch });
+      // A tap or a drag that ends where it started is not an edit: keep the
+      // same state (no undo step).
+      if (TRANSFORM_KEYS.every((key) => next[key] === current[key])) return state;
       return commit(
         state,
-        state.items.map((i) => (i.id === action.id ? clampItem({ ...i, ...action.patch }) : i)),
+        state.items.map((i) => (i.id === action.id ? next : i)),
       );
     }
 

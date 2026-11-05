@@ -370,7 +370,7 @@ export function StylebookPicker({ onAdd, onUndoLast, countsByItemId, onHeightCha
                 onChange={(event) => setFilter((f) => ({ ...f, query: event.target.value }))}
                 placeholder="Search all pieces"
                 aria-label="Search pieces"
-                className="min-w-0 flex-1 bg-transparent font-body text-sm text-cute-text outline-none placeholder:text-cute-text-muted"
+                className="min-w-0 flex-1 bg-transparent font-body text-base text-cute-text outline-none placeholder:text-cute-text-muted sm:text-sm"
               />
             </label>
             {queryActive && (

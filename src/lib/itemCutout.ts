@@ -5,9 +5,11 @@
 // This module must never throw and never reject — every failure mode (fetch
 // fails, removeBackground resolves null, upload fails, persist fails)
 // resolves to a well-defined `CutoutResult` the caller can branch on, not a
-// rejected promise. Callers (OutfitBuilderPage) rely on this to swap the
-// canvas placement over as soon as the upload succeeds, independent of
-// whether the final persist step lands.
+// rejected promise. The Outfit Builder runs it through `cutoutQueue`, which
+// only caches each resolved cutout URL for *later* adds of the same item
+// (a successful upload is usable this session even if the persist step
+// fails). Pieces already placed on the canvas are never swapped: each keeps
+// the image it was added with.
 import { preparePhoto } from "./image";
 import { removeBackground } from "./backgroundRemoval";
 import { uploadImage } from "../api/uploads";
@@ -33,17 +35,16 @@ export type CutoutResult =
  *
  * Resolves `{ ok: true, cutoutURL, persisted }` once the whole pipeline
  * (including the persist attempt) settles — `persisted` reflects whether the
- * backfill PUT also landed, so a caller can keep an in-session swap even
- * when the final persist step fails (the look still saves correctly; the
- * cutout just won't survive a reload). Resolves `{ ok: false }` if fetch,
+ * backfill PUT also landed, so a caller can still use the cutout for the
+ * rest of the session when the final persist step fails (it just won't
+ * survive a reload). Resolves `{ ok: false }` if fetch,
  * downscale-fallback-and-removeBackground, or upload all fail to produce a
- * usable cutout — in that case `onCutoutReady` is never called and the
- * caller's placement should keep the original photo.
+ * usable cutout — in that case `onCutoutReady` is never called and later
+ * adds keep using the original photo.
  *
  * `onCutoutReady`, if given, fires as soon as the upload succeeds — *before*
- * the persist step runs — so a caller can swap the canvas over immediately
- * per decision 5's "swap on upload, persist after" order, without waiting on
- * the (possibly slow, possibly failing) backfill `PUT`.
+ * the persist step runs — so a caller can start using the cutout without
+ * waiting on the (possibly slow, possibly failing) backfill `PUT`.
  */
 export async function generateItemCutout(
   itemId: string,

@@ -12,7 +12,11 @@ export function createSerialChain(): SerialChain {
   let tail: Promise<void> = Promise.resolve();
   return {
     run(task) {
-      const next = tail.then(task).catch(() => {});
+      const next = tail.then(task).catch((err: unknown) => {
+        // Swallowed so later tasks still run, but logged so a failed add
+        // (e.g. crypto.randomUUID missing on an insecure origin) is diagnosable.
+        console.warn("serialChain: task failed", err);
+      });
       tail = next;
       return next;
     },

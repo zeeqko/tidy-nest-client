@@ -1,7 +1,7 @@
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import type Konva from "konva";
 import { Image as KonvaImage, Layer, Rect, Stage, Transformer } from "react-konva";
-import { ArrowDownToLine, ArrowUpToLine, Copy, Shirt, Trash2 } from "lucide-react";
+import { ArrowDownToLine, ArrowUpToLine, Copy, Shirt, X } from "lucide-react";
 import type { PlacedItem } from "./OutfitBuilderPage";
 import {
   DESIGN_HEIGHT,
@@ -9,8 +9,11 @@ import {
   clampItem,
   fitRectToScreen,
   fitToScreen,
+  rotatedBounds,
   type Rect as LogicalRect,
 } from "../lib/canvasSpace";
+import { CROSS_HIT_SIZE, crossButtonPosition } from "../lib/crossButton";
+import { shouldDeleteOnKey } from "../lib/canvasKeyboard";
 
 /** Every placed item's (x, y, width, height) lives in the fixed
  *  DESIGN_WIDTH x DESIGN_HEIGHT (400x711, 9:16) logical space from
@@ -62,8 +65,9 @@ export interface OutfitCanvasProps {
   onReorder(id: string, direction: "front" | "back"): void;
   onCopy(id: string): void;
   onRemove(id: string): void;
-  /** Renders non-interactively: no dragging, selection, Transformer or
-   *  toolbar, and the page may scroll over it (used by Look detail). */
+  /** Renders non-interactively: no dragging, selection, Transformer, remove
+   *  ✕, toolbar pill or Delete key, and the page may scroll over it (used by
+   *  Look detail). */
   readOnly?: boolean;
   /** Logical-space rect to fit into the container instead of the whole
    *  400x711 space. Read-only only (ignored when interactive). */
@@ -109,6 +113,8 @@ interface PlacedNodeProps {
   layout: StageLayout;
   onSelect: () => void;
   onChangeTransform: (patch: TransformPatch) => void;
+  /** A drag of this piece started / ended (hides the remove ✕ meanwhile). */
+  onGestureChange: (active: boolean) => void;
   registerRef: (node: Konva.Image | null) => void;
 }
 
@@ -127,6 +133,7 @@ function PlacedNode({
   layout,
   onSelect,
   onChangeTransform,
+  onGestureChange,
   registerRef,
 }: PlacedNodeProps) {
   // New placements are sized to their image's real aspect by the builder
@@ -165,8 +172,14 @@ function PlacedNode({
     };
   };
 
+  const handleDragStart = () => {
+    onSelect();
+    onGestureChange(true);
+  };
+
   const handleDragEnd = (event: Konva.KonvaEventObject<DragEvent>) => {
     const node = event.target;
+    onGestureChange(false);
     commitClamped(node, {
       x: node.x() - item.width / 2,
       y: node.y() - item.height / 2,
@@ -210,7 +223,7 @@ function PlacedNode({
     strokeWidth: !readOnly && isSelected ? 2 : 0,
     onClick: readOnly ? undefined : onSelect,
     onTap: readOnly ? undefined : onSelect,
-    onDragStart: readOnly ? undefined : onSelect,
+    onDragStart: readOnly ? undefined : handleDragStart,
     dragBoundFunc: readOnly ? undefined : dragBoundFunc,
     onDragEnd: readOnly ? undefined : handleDragEnd,
     onTransformEnd: readOnly ? undefined : handleTransformEnd,
@@ -229,8 +242,10 @@ function PlacedNode({
   );
 }
 
-const TOOLBAR_BUTTON =
-  "flex h-8 w-8 items-center justify-center rounded-full text-cute-text-muted transition hover:bg-cute-surface-alt hover:text-cute-text";
+/** Icon button of the selection pill (dark pill, light icons); finger-sized
+ *  (44px) on coarse pointers. */
+const PILL_BUTTON =
+  "flex h-8 w-8 items-center justify-center rounded-full text-white/85 transition hover:bg-white/15 hover:text-white focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-white pointer-coarse:h-11 pointer-coarse:w-11";
 
 /** Fixed arrange canvas for the Outfit Builder: a controlled Konva surface
  *  over the placed items and selection owned by the page. The Stage fills
@@ -241,7 +256,10 @@ const TOOLBAR_BUTTON =
  *  selected item; every move is clamped into the logical space. There is
  *  deliberately no wheel, pinch-to-pan or drag-on-empty-space handling:
  *  dragging empty space does nothing (and `touch-action: none` stops it
- *  scrolling the page); tapping empty space deselects. */
+ *  scrolling the page); tapping empty space deselects. The selected piece
+ *  gets a red ✕ (HTML button overlaid on its top-right corner) to remove it,
+ *  plus a dark pill at the bottom with send-to-back / bring-to-front / copy;
+ *  on desktop Delete / Backspace also removes it. */
 export function OutfitCanvas({
   items,
   selectedId,
@@ -256,7 +274,13 @@ export function OutfitCanvas({
   const containerRef = useRef<HTMLDivElement>(null);
   const trRef = useRef<Konva.Transformer>(null);
   const nodeRefs = useRef(new Map<string, Konva.Image>());
+  const pillRef = useRef<HTMLDivElement>(null);
   const [stageSize, setStageSize] = useState({ width: 0, height: 0 });
+  /** A piece is being dragged or resized/rotated: the remove ✕ is hidden
+   *  meanwhile so it never lags behind the moving piece. */
+  const [gestureActive, setGestureActive] = useState(false);
+  /** The selection pill's rect in container pixels (null until measured). */
+  const [pillRect, setPillRect] = useState<LogicalRect | null>(null);
 
   // The container is always mounted (even with no items) so it is measured
   // on first render, before the first item is placed.
@@ -287,6 +311,45 @@ export function OutfitCanvas({
 
   const selectedItem =
     selectedId !== null ? (items.find((item) => item.id === selectedId) ?? null) : null;
+  const showSelectionUi = !readOnly && selectedItem !== null;
+
+  // Measure the pill (bottom-centre of the container) whenever it appears or
+  // the container resizes, so the ✕ can be kept clear of it.
+  useLayoutEffect(() => {
+    const pill = pillRef.current;
+    const container = containerRef.current;
+    if (!showSelectionUi || !pill || !container) return;
+    const p = pill.getBoundingClientRect();
+    const c = container.getBoundingClientRect();
+    const next = { x: p.left - c.left, y: p.top - c.top, width: p.width, height: p.height };
+    setPillRect((prev) =>
+      prev &&
+      prev.x === next.x &&
+      prev.y === next.y &&
+      prev.width === next.width &&
+      prev.height === next.height
+        ? prev
+        : next,
+    );
+  }, [showSelectionUi, stageSize.width, stageSize.height]);
+
+  // Desktop: Delete / Backspace removes the selected piece, except while
+  // typing in a field (e.g. the picker's search box), with a modifier held,
+  // or mid drag/transform.
+  useEffect(() => {
+    if (readOnly || selectedId === null) return;
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (!shouldDeleteOnKey(event, document.activeElement)) return;
+      const busy =
+        Boolean(trRef.current?.isTransforming()) ||
+        [...nodeRefs.current.values()].some((node) => node.isDragging());
+      if (busy) return;
+      event.preventDefault();
+      onRemove(selectedId);
+    };
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [readOnly, selectedId, onRemove]);
 
   useEffect(() => {
     const transformer = trRef.current;
@@ -311,6 +374,17 @@ export function OutfitCanvas({
     if (isGestureActive()) return;
     onSelect(null);
   };
+
+  // The remove ✕: on the top-right corner of the selected piece's rotated
+  // bounding box (in screen pixels), kept inside the container and clear of
+  // the pill. Derived from props + stage size on every render, so it follows
+  // the piece after a transform, Undo/Redo and resizes; hidden mid-gesture.
+  const crossPosition =
+    showSelectionUi && selectedItem && isMeasured && !gestureActive
+      ? crossButtonPosition(rotatedBounds([selectedItem]), fit, stageSize, {
+          exclusions: pillRect ? [pillRect] : [],
+        })
+      : null;
 
   const ordered = [...items].sort((a, b) => a.zIndex - b.zIndex);
   const isEmpty = items.length === 0;
@@ -362,6 +436,7 @@ export function OutfitCanvas({
                 layout={layout}
                 onSelect={() => onSelect(item.id)}
                 onChangeTransform={(patch) => onChangeTransform(item.id, patch)}
+                onGestureChange={setGestureActive}
                 registerRef={(node) => {
                   if (node) nodeRefs.current.set(item.id, node);
                   else nodeRefs.current.delete(item.id);
@@ -375,6 +450,8 @@ export function OutfitCanvas({
                 enabledAnchors={["top-left", "top-right", "bottom-left", "bottom-right"]}
                 anchorSize={ANCHOR_SIZE}
                 rotateAnchorOffset={ROTATE_ANCHOR_OFFSET}
+                onTransformStart={() => setGestureActive(true)}
+                onTransformEnd={() => setGestureActive(false)}
                 boundBoxFunc={(oldBox, newBox) =>
                   newBox.width < MIN_SIZE || newBox.height < MIN_SIZE ? oldBox : newBox
                 }
@@ -397,49 +474,56 @@ export function OutfitCanvas({
         </div>
       )}
 
-      {!readOnly && selectedItem && (
+      {crossPosition && selectedItem && (
+        <button
+          type="button"
+          onClick={() => onRemove(selectedItem.id)}
+          aria-label={`Remove ${selectedItem.name}`}
+          data-testid="remove-piece"
+          className="group absolute z-10 flex items-center justify-center rounded-full focus-visible:outline-2 focus-visible:outline-cute-text"
+          style={{ ...crossPosition, width: CROSS_HIT_SIZE, height: CROSS_HIT_SIZE }}
+        >
+          {/* 22px visual inside the 44px hit area. */}
+          <span
+            aria-hidden="true"
+            className="flex h-[22px] w-[22px] items-center justify-center rounded-full bg-cute-destructive text-cute-destructive-foreground shadow-sm ring-2 ring-white transition group-hover:brightness-110 group-active:scale-90"
+          >
+            <X size={13} strokeWidth={3} />
+          </span>
+        </button>
+      )}
+
+      {showSelectionUi && selectedItem && (
         <div
-          className="absolute bottom-3 left-1/2 flex max-w-[calc(100%-1.5rem)] -translate-x-1/2 items-center gap-2 rounded-full border border-cute-border bg-cute-surface py-1.5 pr-1.5 pl-3 shadow-sm"
+          ref={pillRef}
+          className="absolute bottom-3 left-1/2 z-10 flex max-w-[calc(100%-1.5rem)] -translate-x-1/2 items-center gap-1 rounded-full bg-cute-text p-1 shadow-md"
           role="toolbar"
           aria-label={`${selectedItem.name} actions`}
         >
-          <span className="truncate font-body text-xs font-medium text-cute-text">
-            {selectedItem.name}
-          </span>
-          <div className="flex shrink-0 items-center gap-1">
-            <button
-              type="button"
-              onClick={() => onReorder(selectedItem.id, "back")}
-              aria-label="Send to back"
-              className={TOOLBAR_BUTTON}
-            >
-              <ArrowDownToLine size={15} />
-            </button>
-            <button
-              type="button"
-              onClick={() => onReorder(selectedItem.id, "front")}
-              aria-label="Bring to front"
-              className={TOOLBAR_BUTTON}
-            >
-              <ArrowUpToLine size={15} />
-            </button>
-            <button
-              type="button"
-              onClick={() => onCopy(selectedItem.id)}
-              aria-label={`Copy ${selectedItem.name}`}
-              className={TOOLBAR_BUTTON}
-            >
-              <Copy size={15} />
-            </button>
-            <button
-              type="button"
-              onClick={() => onRemove(selectedItem.id)}
-              aria-label={`Remove ${selectedItem.name}`}
-              className="flex h-8 w-8 items-center justify-center rounded-full text-cute-text-muted transition hover:bg-cute-danger/10 hover:text-cute-danger"
-            >
-              <Trash2 size={15} />
-            </button>
-          </div>
+          <button
+            type="button"
+            onClick={() => onReorder(selectedItem.id, "back")}
+            aria-label="Send to back"
+            className={PILL_BUTTON}
+          >
+            <ArrowDownToLine size={15} />
+          </button>
+          <button
+            type="button"
+            onClick={() => onReorder(selectedItem.id, "front")}
+            aria-label="Bring to front"
+            className={PILL_BUTTON}
+          >
+            <ArrowUpToLine size={15} />
+          </button>
+          <button
+            type="button"
+            onClick={() => onCopy(selectedItem.id)}
+            aria-label="Copy"
+            className={PILL_BUTTON}
+          >
+            <Copy size={15} />
+          </button>
         </div>
       )}
     </div>

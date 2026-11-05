@@ -81,7 +81,7 @@ describe("crossButtonPosition", () => {
   it("keeps the hit area inside for a piece partly off the container (offset stage)", () => {
     const container = { width: 390, height: 300 };
     const fit = { scale: 0.42, offsetX: 111, offsetY: 0 };
-    // Piece in the board's top-right corner; the board itself is letterboxed.
+    // Piece in the logical space's top-right corner; the space is letterboxed.
     const p = crossButtonPosition({ x: 300, y: -10, width: 120, height: 80 }, fit, container);
     expect(p.left).toBeGreaterThanOrEqual(0);
     expect(p.top).toBe(0);

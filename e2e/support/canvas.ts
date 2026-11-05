@@ -5,9 +5,10 @@
 // (the Stage is scaled, so node attributes are in the 400x711 design space)
 // without adding test hooks to product code. A placed node's Konva x/y is
 // its box centre (offset = half size, see OutfitCanvas PlacedNode), so the
-// stored top-left is x - offsetX. In the interactive builder the layer's
-// first child is the white "board" Rect (the framed 400x711 area); it is not
-// a placed piece, so every helper below skips it along with the Transformer.
+// stored top-left is x - offsetX. The layer holds only the placed pieces
+// (Konva.Image) plus, when interactive, the Transformer, which every helper
+// below skips. The 400x711 logical space is not drawn (no board/frame node);
+// its on-screen rect is derived from the stage's scale/offset instead.
 import { expect, type Locator, type Page, type TestInfo } from "@playwright/test";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -36,23 +37,36 @@ export interface Point {
 export const DESIGN_WIDTH = 400;
 export const DESIGN_HEIGHT = 711;
 
-/** Logical rect + on-screen client rect of the builder's board, or null when the stage has none (read-only canvases). */
-export async function boardInfo(page: Page, stageIndex = 0) {
+/** On-screen rect of the (undrawn) 400x711 logical space, in stage /
+ *  container pixels, derived from the stage transform (logical (0, 0) maps
+ *  to the stage offset; 400x711 is scaled by the stage scale), plus the
+ *  stage size. */
+export async function logicalSpaceInfo(page: Page, stageIndex = 0) {
+  return page.evaluate(
+    ([index, w, h]) => {
+      const stage = (window as any).Konva.stages[index];
+      return {
+        client: { x: stage.x(), y: stage.y(), width: w * stage.scaleX(), height: h * stage.scaleY() },
+        stage: { width: stage.width(), height: stage.height() },
+      };
+    },
+    [stageIndex, DESIGN_WIDTH, DESIGN_HEIGHT] as const,
+  );
+}
+
+/** Every node of the stage that is not its Layer, a placed piece
+ *  (Konva.Image) or the Transformer (or part of it): a board, frame or any other backdrop
+ *  shape would show up here. Empty when the canvas draws only the pieces. */
+export async function nonPieceNodes(page: Page, stageIndex = 0) {
   return page.evaluate((index) => {
-    const stage = (window as any).Konva?.stages?.[index];
-    const board = stage?.findOne(".board");
-    if (!board) return null;
-    return {
-      x: board.x(),
-      y: board.y(),
-      width: board.width(),
-      height: board.height(),
-      fill: board.fill(),
-      listening: board.listening(),
-      zIndex: board.zIndex(),
-      client: board.getClientRect({ skipStroke: true }),
-      stage: { width: stage.width(), height: stage.height() },
-    };
+    const stage = (window as any).Konva.stages[index];
+    return stage
+      .find(
+        (n: any) =>
+          !["Layer", "Image", "Transformer"].includes(n.getClassName()) && !n.findAncestor("Transformer"),
+      )
+      .map((n: any) => `${n.getClassName()}${n.name() ? `.${n.name()}` : ""}`)
+      .concat(stage.findOne(".board") ? ["named board"] : []);
   }, stageIndex);
 }
 
@@ -63,7 +77,7 @@ export async function canvasNodes(page: Page, stageIndex = 0): Promise<CanvasNod
     const stage = Konva?.stages?.[index];
     if (!stage) return [];
     const layer = stage.getLayers()[0];
-    return layer.getChildren().filter((n: any) => n.getClassName() !== "Transformer" && !n.hasName("board")).map((n: any) => ({
+    return layer.getChildren().filter((n: any) => n.getClassName() !== "Transformer").map((n: any) => ({
       cls: n.getClassName(),
       x: n.x() - n.offsetX(),
       y: n.y() - n.offsetY(),
@@ -89,7 +103,7 @@ export async function nodeScreenCenter(page: Page, nodeIndex: number, stageIndex
   return page.evaluate(
     ([si, ni]) => {
         const stage = (window as any).Konva.stages[si];
-        const nodes = stage.getLayers()[0].getChildren().filter((n: any) => n.getClassName() !== "Transformer" && !n.hasName("board"));
+        const nodes = stage.getLayers()[0].getChildren().filter((n: any) => n.getClassName() !== "Transformer");
       const abs = nodes[ni].getAbsolutePosition();
       const rect = stage.container().getBoundingClientRect();
       return { x: rect.left + abs.x, y: rect.top + abs.y };
@@ -148,7 +162,7 @@ export async function transformerAnchors(page: Page, stageIndex = 0) {
 export async function nodeClientRects(page: Page, stageIndex = 0) {
   return page.evaluate((index) => {
     const stage = (window as any).Konva.stages[index];
-    const nodes = stage.getLayers()[0].getChildren().filter((n: any) => n.getClassName() !== "Transformer" && !n.hasName("board"));
+    const nodes = stage.getLayers()[0].getChildren().filter((n: any) => n.getClassName() !== "Transformer");
     const container = stage.container().getBoundingClientRect();
     return {
       stage: { width: stage.width(), height: stage.height() },
@@ -159,8 +173,8 @@ export async function nodeClientRects(page: Page, stageIndex = 0) {
 }
 
 /**
- * A viewport point over empty canvas: inside the 400x711 design area (the
- * board) and at least `margin` px away from every placed node.
+ * A viewport point over empty canvas: inside the 400x711 design area and at
+ * least `margin` px away from every placed node.
  */
 export async function emptyCanvasPoint(page: Page, margin = 40): Promise<Point> {
   const point = await page.evaluate((m) => {
@@ -168,7 +182,7 @@ export async function emptyCanvasPoint(page: Page, margin = 40): Promise<Point> 
     const rect = stage.container().getBoundingClientRect();
     const top = rect.top + stage.y();
     const bottomLimit = Math.min(rect.bottom, top + 711 * stage.scaleY()) - m;
-    const nodes = stage.getLayers()[0].getChildren().filter((n: any) => n.getClassName() !== "Transformer" && !n.hasName("board"));
+    const nodes = stage.getLayers()[0].getChildren().filter((n: any) => n.getClassName() !== "Transformer");
     const boxes = nodes.map((n: any) => n.getClientRect());
     const left = rect.left + stage.x();
     const right = left + 400 * stage.scaleX();
@@ -287,7 +301,7 @@ export async function nodeScreenRect(page: Page, nodeIndex: number, stageIndex =
   return page.evaluate(
     ([si, ni]) => {
       const stage = (window as any).Konva.stages[si];
-      const nodes = stage.getLayers()[0].getChildren().filter((n: any) => n.getClassName() !== "Transformer" && !n.hasName("board"));
+      const nodes = stage.getLayers()[0].getChildren().filter((n: any) => n.getClassName() !== "Transformer");
       const r = nodes[ni].getClientRect({ skipStroke: true, skipShadow: true });
       const rect = stage.container().getBoundingClientRect();
       return { x: rect.left + r.x, y: rect.top + r.y, width: r.width, height: r.height };

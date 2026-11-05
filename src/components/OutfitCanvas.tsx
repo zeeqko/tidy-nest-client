@@ -1,11 +1,9 @@
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import type Konva from "konva";
-import { Image as KonvaImage, Layer, Rect, Stage, Transformer } from "react-konva";
+import { Image as KonvaImage, Layer, Stage, Transformer } from "react-konva";
 import { ArrowDownToLine, ArrowUpToLine, Copy, Shirt, X } from "lucide-react";
 import type { PlacedItem } from "./OutfitBuilderPage";
 import {
-  DESIGN_HEIGHT,
-  DESIGN_WIDTH,
   clampItem,
   fitRectToScreen,
   fitToScreen,
@@ -42,18 +40,12 @@ const ANCHOR_SIZE = COARSE_POINTER ? 20 : 10;
 const ROTATE_ANCHOR_OFFSET = COARSE_POINTER ? 24 : 16;
 
 /** Dotted backdrop drawn behind the (transparent) Stage, across the whole
- *  stage area including any letterbox margins. */
+ *  stage area including any letterbox margins: the surface is uniformly
+ *  dotted, with no frame marking the 400x711 logical space. */
 const DOTTED_BACKGROUND = {
   backgroundImage: "radial-gradient(var(--color-cute-border) 1.5px, transparent 1.5px)",
   backgroundSize: "18px 18px",
 } as const;
-
-/** Konva node name of the interactive mode's board (the white framed
- *  400x711 area pieces are kept inside). It is not a placed piece. */
-const BOARD_NODE_NAME = "board";
-const BOARD_FILL = "#ffffff";
-/** `--color-cute-border`, darkened a touch so the frame reads on the dots. */
-const BOARD_STROKE = "#DCC9C5";
 
 export type TransformPatch = Pick<PlacedItem, "x" | "y" | "width" | "height" | "rotation">;
 
@@ -250,8 +242,9 @@ const PILL_BUTTON =
 /** Fixed arrange canvas for the Outfit Builder: a controlled Konva surface
  *  over the placed items and selection owned by the page. The Stage fills
  *  its container; the 400x711 logical space is fitted into it with
- *  `fitToScreen` and, when interactive, drawn as a white framed board so the
- *  area pieces are kept inside is visible. Items are selected by tap, moved
+ *  `fitToScreen` (letterboxed) and is not drawn: pieces are kept inside it,
+ *  so on a panel wider or taller than 9:16 they stop at an invisible edge
+ *  inset from the panel's sides. Items are selected by tap, moved
  *  by one-finger / mouse drag, and resized/rotated with the Transformer handles of the
  *  selected item; every move is clamped into the logical space. There is
  *  deliberately no wheel, pinch-to-pan or drag-on-empty-space handling:
@@ -442,24 +435,6 @@ export function OutfitCanvas({
           onTouchStart={readOnly ? undefined : handleStagePointerDown}
         >
           <Layer listening={!readOnly}>
-            {/* Beneath every piece; not listening, so a tap on empty board
-                still hits the Stage and deselects. */}
-            {!readOnly && (
-              <Rect
-                name={BOARD_NODE_NAME}
-                x={0}
-                y={0}
-                width={DESIGN_WIDTH}
-                height={DESIGN_HEIGHT}
-                fill={BOARD_FILL}
-                stroke={BOARD_STROKE}
-                strokeWidth={1.5}
-                strokeScaleEnabled={false}
-                cornerRadius={6}
-                listening={false}
-                perfectDrawEnabled={false}
-              />
-            )}
             {ordered.map((item) => (
               <PlacedNode
                 key={item.id}

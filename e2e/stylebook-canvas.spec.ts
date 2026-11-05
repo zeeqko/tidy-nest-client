@@ -12,16 +12,18 @@ import {
   addPiece,
   addTile,
   anchorPoint,
-  boardInfo,
   boxesOverlap,
   canvasNodes,
   canvasPanel,
   countBadge,
   emptyCanvasPoint,
+  logicalSpaceInfo,
   mouseDrag,
   nodeClientRects,
   nodeScreenCenter,
+  nonPieceNodes,
   openBuilder,
+  outfitCanvas,
   openSaveSheet,
   picker,
   pickerPanel,
@@ -378,7 +380,7 @@ test.describe("fixed canvas", () => {
     await expect(page.getByText("3 pieces").filter({ visible: true })).toBeVisible();
     await expect.poll(async () => (await canvasNodes(page)).length).toBe(3);
     await expect.poll(async () => (await canvasNodes(page)).filter((n) => n.hasImage).length).toBe(3);
-    expect(await boardInfo(page), "the read-only detail canvas draws no board frame").toBeNull();
+    expect(await nonPieceNodes(page), "the read-only detail canvas draws no board frame").toEqual([]);
     const { stage, container, rects } = await nodeClientRects(page);
     const viewport = page.viewportSize()!;
     expect(container.x).toBeGreaterThanOrEqual(0);
@@ -637,25 +639,30 @@ test.describe("docked layout", () => {
       el.scrollTop = 0;
     });
 
-    // The canvas draws the framed 400x711 board, fully inside the canvas panel.
-    const board = (await boardInfo(page))!;
-    expect(board, `${label}: board frame is drawn`).not.toBeNull();
-    expect({ x: board.x, y: board.y, width: board.width, height: board.height }).toEqual({
-      x: 0,
-      y: 0,
-      width: DESIGN_WIDTH,
-      height: DESIGN_HEIGHT,
-    });
-    expect(board.listening, "board does not catch taps").toBe(false);
-    expect(board.zIndex, "board is beneath every piece").toBe(0);
-    expect(board.client.x).toBeGreaterThanOrEqual(-0.5);
-    expect(board.client.y).toBeGreaterThanOrEqual(-0.5);
-    expect(board.client.x + board.client.width).toBeLessThanOrEqual(board.stage.width + 0.5);
-    expect(board.client.y + board.client.height).toBeLessThanOrEqual(board.stage.height + 0.5);
-    // ...and the board touches the panel on at least one axis (letterboxed fit).
+    // The canvas surface is uniformly dotted: no board, frame or backdrop
+    // node is drawn (only the pieces and the Transformer), and the dotted
+    // background covers the whole canvas panel.
+    expect(await nonPieceNodes(page), `${label}: no board or frame is drawn`).toEqual([]);
+    const surface = await outfitCanvas(page).evaluate((el) => ({
+      backgroundImage: getComputedStyle(el).backgroundImage,
+      width: el.clientWidth,
+      height: el.clientHeight,
+    }));
+    expect(surface.backgroundImage, `${label}: dotted background`).toContain("radial-gradient");
+    const panelInner = await canvasPanel(page).evaluate((el) => ({ width: el.clientWidth, height: el.clientHeight }));
+    expect(surface.width, `${label}: dots span the panel's width`).toBeCloseTo(panelInner.width, 0);
+    expect(surface.height, `${label}: dots span the panel's height`).toBeCloseTo(panelInner.height, 0);
+    // The (undrawn) 400x711 logical space, from the stage transform, is fully
+    // inside the canvas panel...
+    const space = await logicalSpaceInfo(page);
+    expect(space.client.x).toBeGreaterThanOrEqual(-0.5);
+    expect(space.client.y).toBeGreaterThanOrEqual(-0.5);
+    expect(space.client.x + space.client.width).toBeLessThanOrEqual(space.stage.width + 0.5);
+    expect(space.client.y + space.client.height).toBeLessThanOrEqual(space.stage.height + 0.5);
+    // ...and touches the panel on at least one axis (letterboxed fit).
     expect(
-      Math.abs(board.client.width - board.stage.width) < 1 || Math.abs(board.client.height - board.stage.height) < 1,
-      `${label}: board is fitted to the panel`,
+      Math.abs(space.client.width - space.stage.width) < 1 || Math.abs(space.client.height - space.stage.height) < 1,
+      `${label}: logical space is fitted to the panel`,
     ).toBe(true);
 
     await saveScreenshot(page, testInfo, `e-layout-${label}`);
@@ -710,7 +717,7 @@ test.describe("docked layout", () => {
       await saveScreenshot(page, testInfo, "e-layout-desktop-selected");
     }
 
-    // New pieces are placed against the whole 400x711 board.
+    // New pieces are placed against the whole 400x711 logical space.
     for (const node of await canvasNodes(page)) {
       const box = rotatedBox(node);
       expect(box.left).toBeGreaterThanOrEqual(-1e-6);

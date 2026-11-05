@@ -48,32 +48,40 @@ async function waitFor(url: string, timeoutMs: number, proc: ChildProcess): Prom
   throw new Error(`timed out waiting for ${url} (${lastError})`);
 }
 
-function killGroup(proc: ChildProcess | undefined): Promise<void> {
-  if (!proc || proc.pid === undefined || proc.exitCode !== null || proc.signalCode !== null) {
-    return Promise.resolve();
+function signalGroup(pid: number, signal: NodeJS.Signals): boolean {
+  try {
+    process.kill(-pid, signal);
+    return true;
+  } catch {
+    // ESRCH: the whole group is already gone.
+    return false;
   }
+}
+
+/**
+ * Stops a detached process and its whole process group: SIGTERM, wait for
+ * the leader to exit (at most `graceMs`), then always SIGKILL the group
+ * best-effort, so children that outlive the leader or ignore SIGTERM (e.g.
+ * Vite's esbuild service) are gone too. Never rejects.
+ */
+async function killGroup(proc: ChildProcess | undefined, graceMs = 5000): Promise<void> {
+  if (!proc || proc.pid === undefined) return;
   const pid = proc.pid;
-  return new Promise((resolve) => {
-    const done = () => {
-      clearTimeout(timer);
-      resolve();
-    };
-    proc.once("exit", done);
-    try {
-      process.kill(-pid, "SIGTERM");
-    } catch {
-      done();
-      return;
-    }
-    const timer = setTimeout(() => {
-      try {
-        process.kill(-pid, "SIGKILL");
-      } catch {
-        // already gone
-      }
-      setTimeout(resolve, 500);
-    }, 5000);
-  });
+  const leaderRunning = proc.exitCode === null && proc.signalCode === null;
+  if (signalGroup(pid, "SIGTERM") && leaderRunning) {
+    await new Promise<void>((resolve) => {
+      let timer: ReturnType<typeof setTimeout> | undefined = undefined;
+      const done = () => {
+        if (timer !== undefined) clearTimeout(timer);
+        resolve();
+      };
+      proc.once("exit", done);
+      timer = setTimeout(done, graceMs);
+    });
+    // Brief grace for the rest of the group to handle SIGTERM too.
+    await new Promise((r) => setTimeout(r, 300));
+  }
+  signalGroup(pid, "SIGKILL");
 }
 
 function printLog(label: string, file: string) {
@@ -106,28 +114,35 @@ export default async function globalSetup() {
   const teardown = async () => {
     if (tornDown) return;
     tornDown = true;
-    await Promise.all([killGroup(vite), killGroup(backend)]);
     try {
-      dropE2eDatabase();
-    } catch (err) {
-      console.error("e2e teardown: failed to drop the e2e database", err);
-    }
-    if (process.env.E2E_KEEP_TMP) {
-      console.log(`e2e: kept temp dir ${tmpDir}`);
-    } else {
-      fs.rmSync(tmpDir, { recursive: true, force: true });
+      // Each kill is isolated so one failure can't skip the other.
+      await Promise.all(
+        [vite, backend].map((proc) =>
+          killGroup(proc).catch((err) => console.error("e2e teardown: failed to stop a server", err)),
+        ),
+      );
+    } finally {
+      try {
+        dropE2eDatabase(); // goes through the _e2e name guard
+      } catch (err) {
+        console.error("e2e teardown: failed to drop the e2e database", err);
+      }
+      if (process.env.E2E_KEEP_TMP) {
+        console.log(`e2e: kept temp dir ${tmpDir}`);
+      } else {
+        try {
+          fs.rmSync(tmpDir, { recursive: true, force: true });
+        } catch (err) {
+          console.error(`e2e teardown: failed to remove ${tmpDir}`, err);
+        }
+      }
     }
   };
   // Last-resort cleanup if the runner dies without calling teardown.
   const emergencyKill = () => {
+    // Group-wide even if the leader already exited (children may linger).
     for (const proc of [vite, backend]) {
-      if (proc?.pid !== undefined && proc.exitCode === null) {
-        try {
-          process.kill(-proc.pid, "SIGKILL");
-        } catch {
-          // gone
-        }
-      }
+      if (proc?.pid !== undefined) signalGroup(proc.pid, "SIGKILL");
     }
   };
   process.once("exit", emergencyKill);

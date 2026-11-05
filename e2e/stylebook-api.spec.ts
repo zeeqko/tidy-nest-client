@@ -153,14 +153,15 @@ test.describe("looks: 400x711 coordinates", () => {
 });
 
 test.describe("inventory tags", () => {
-  // PRODUCT BUG (backend): two sessions creating items that introduce the
-  // same brand-new tag name at the same moment race in ensureTag
+  // PRODUCT BUG (backend): several sessions (this test uses four users)
+  // creating items that introduce the same brand-new tag name at the same
+  // moment race in ensureTag
   // (backend/internal/service/inventory_service.go:366-374: SELECT by name,
-  // then a plain INSERT with no ON CONFLICT), so the loser gets
+  // then a plain INSERT with no ON CONFLICT), so the losers get
   // 500 "duplicate key value violates unique constraint itemtags_name_unique".
   // First seen when two Playwright workers seeded the same tag names in
   // parallel. Re-enable once ensureTag is race-safe.
-  test.fixme("concurrent creation of the same new tag name by two users succeeds for both", async () => {
+  test.fixme("concurrent creation of the same new tag name by several users succeeds for all", async () => {
     const contexts = await Promise.all([0, 1, 2, 3].map(() => playwrightRequest.newContext({ baseURL: APP_URL })));
     try {
       await Promise.all(contexts.map((c) => api(c).signupAndLogin(uniqueEmail("race"), PASSWORD)));

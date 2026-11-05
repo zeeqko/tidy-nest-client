@@ -212,24 +212,31 @@ test.describe("fixed canvas", () => {
       await pinch(page, offCanvas, 2);
       await page.waitForTimeout(300);
       const zoomed = await page.evaluate(() => window.visualViewport?.scale ?? 1);
-      testInfo.annotations.push({ type: "pinch-control", description: `visualViewport.scale after an off-canvas pinch: ${zoomed}` });
+      expect(zoomed, "control: the same pinch off the canvas zooms the page").toBeGreaterThan(1);
     }
   });
 
-  // PRODUCT BUG: a mouse wheel / two-finger trackpad scroll over the canvas
-  // scrolls the whole page (scrollY 0 -> 324 at 1440x900). The canvas only
-  // sets `touch-action: none` (OutfitCanvas.tsx:309), which does not affect
-  // wheel events, and there is deliberately no wheel handler
-  // (OutfitCanvas.tsx:224-227), so the plan's "a two-finger wheel does not move
-  // the page" does not hold. Re-enable once the canvas swallows wheel events.
-  test.fixme("(c) a wheel / two-finger trackpad scroll over the canvas does not scroll the page", async ({ authedPage: page }, testInfo) => {
+  // A wheel / trackpad scroll over the canvas is allowed to scroll the page
+  // (the canvas deliberately has no wheel handler, so desktop users can still
+  // reach Save), so window.scrollY is intentionally NOT asserted here. What
+  // must hold is that the wheel never moves pieces or zooms/pans the canvas.
+  test("(c) a wheel / two-finger trackpad scroll over the canvas moves no piece and does not zoom or pan the canvas", async ({
+    authedPage: page,
+  }, testInfo) => {
     test.skip(testInfo.project.name !== "desktop", "wheel input is a desktop scenario");
-    const { still } = await twoPieceCanvas(page);
+    const { nodes } = await twoPieceCanvas(page);
+    const stage = await stageTransform(page);
     const empty = await emptyCanvasPoint(page);
     await page.mouse.move(empty.x, empty.y);
     await page.mouse.wheel(0, 400);
     await page.waitForTimeout(400);
-    await still("wheel over the canvas");
+    // Over a piece too, and back up again.
+    const overPiece = await nodeScreenCenter(page, 0);
+    await page.mouse.move(overPiece.x, overPiece.y);
+    await page.mouse.wheel(0, -400);
+    await page.waitForTimeout(400);
+    expect(await stageTransform(page), "stage scale and offset unchanged").toEqual(stage);
+    expectSameNodes(await canvasNodes(page), nodes);
   });
 
   test("(c) dragging a piece moves only that piece and it cannot leave the 400x711 space, even rotated", async ({

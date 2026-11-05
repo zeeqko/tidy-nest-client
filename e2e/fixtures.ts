@@ -148,7 +148,7 @@ export async function seedCloset(a: Api): Promise<Closet> {
 
   // Tag names are global in the backend and creating the same new tag name
   // from two sessions at once races (see stylebook-api.spec.ts, the fixme'd
-  // "concurrent new tag" test), so each user gets its own tag names.
+  // "concurrent creation of the same new tag name" test), so each user gets its own tag names.
   const suffix = Math.random().toString(36).slice(2, 7);
   const tags = Object.fromEntries(
     (["linen", "summer", "denim", "basic", "canvas"] as TagKey[]).map((t) => [t, `${t}-${suffix}`]),

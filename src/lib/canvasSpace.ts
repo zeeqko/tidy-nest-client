@@ -20,7 +20,7 @@ export function fitToScreen(viewport: { width: number; height: number }): {
   offsetX: number;
   offsetY: number;
 } {
-  const scale = Math.min(viewport.width / DESIGN_WIDTH, viewport.height / DESIGN_HEIGHT);
+  const scale = Math.max(0, Math.min(viewport.width / DESIGN_WIDTH, viewport.height / DESIGN_HEIGHT));
   return {
     scale,
     offsetX: (viewport.width - DESIGN_WIDTH * scale) / 2,
@@ -41,10 +41,14 @@ export function clampItem<T extends Placement>(item: T): T {
   const sin = Math.abs(Math.sin(rad));
   const halfW = (item.width * cos + item.height * sin) / 2;
   const halfH = (item.width * sin + item.height * cos) / 2;
-  const cx = clampAxis(item.x + item.width / 2, halfW, DESIGN_WIDTH);
-  const cy = clampAxis(item.y + item.height / 2, halfH, DESIGN_HEIGHT);
-  const x = cx - item.width / 2;
-  const y = cy - item.height / 2;
+  const centerX = item.x + item.width / 2;
+  const centerY = item.y + item.height / 2;
+  const cx = clampAxis(centerX, halfW, DESIGN_WIDTH);
+  const cy = clampAxis(centerY, halfH, DESIGN_HEIGHT);
+  // Compare centres (not the round-tripped x/y) so an untouched axis keeps its
+  // exact original value instead of picking up floating-point drift.
+  const x = cx === centerX ? item.x : cx - item.width / 2;
+  const y = cy === centerY ? item.y : cy - item.height / 2;
   if (x === item.x && y === item.y) return item;
   return { ...item, x, y };
 }

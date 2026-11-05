@@ -5,6 +5,18 @@ import type { Rect } from "./canvasSpace";
  *  inside it. */
 export const CROSS_HIT_SIZE = 44;
 
+/** Diameter (px) of the visible red circle inside the hit area. */
+export const CROSS_VISUAL_SIZE = 22;
+
+/** How far (px) the hit area's centre is pushed OUT of the piece from its
+ *  top-right corner, on each axis (right and up): the visible circle's
+ *  radius. The circle then sits just outside the corner (tangent to the
+ *  lines of the piece's top and right edges) and only ~11px of the 44px hit
+ *  area overlaps the piece on each axis, so a tap or drag-start in the
+ *  piece's corner interior, or on a narrow piece's rotate handle, no longer
+ *  hits the ✕. */
+export const CROSS_OUTSET = CROSS_VISUAL_SIZE / 2;
+
 /** Gap (px) kept between the ✕ hit area and an exclusion rect (the toolbar pill). */
 export const CROSS_EXCLUSION_GAP = 4;
 
@@ -17,6 +29,9 @@ export interface StageFit {
 export interface CrossButtonOptions {
   /** Side of the square hit area (default `CROSS_HIT_SIZE`). */
   hitSize?: number;
+  /** Outward shift of the hit area's centre from the corner, right and up
+   *  (default `CROSS_OUTSET`). */
+  outset?: number;
   /** Container-pixel rects the hit area must not overlap (e.g. the toolbar
    *  pill docked at the bottom of the canvas). When the hit area would
    *  overlap one, it is moved straight UP until it clears it (plus
@@ -44,8 +59,10 @@ function overlaps(a: Rect, b: Rect): boolean {
  * `bounds` is the piece's rotated bounding box in logical (400x711) space —
  * from `rotatedBounds([item])`. Its top-right corner is mapped to the screen
  * with the stage fit (`logical * scale + offset`) and the hit area is centred
- * on it, then clamped so the whole hit area stays inside the `container`
- * (a piece pushed into a corner still has a reachable ✕), and moved above
+ * `outset` px right of and above it (`corner.x + 11, corner.y - 11` by
+ * default, so it mostly sits outside the piece), then clamped so the whole
+ * hit area stays inside the `container` (a piece pushed into a corner still
+ * has a reachable ✕; the clamp uses the shifted position), and moved above
  * any `exclusions` it would overlap (see `CrossButtonOptions.exclusions`).
  */
 export function crossButtonPosition(
@@ -55,10 +72,11 @@ export function crossButtonPosition(
   options: CrossButtonOptions = {},
 ): { left: number; top: number } {
   const size = options.hitSize ?? CROSS_HIT_SIZE;
-  const cornerX = (bounds.x + bounds.width) * fit.scale + fit.offsetX;
-  const cornerY = bounds.y * fit.scale + fit.offsetY;
-  const left = clampStart(cornerX - size / 2, size, container.width);
-  let top = clampStart(cornerY - size / 2, size, container.height);
+  const outset = options.outset ?? CROSS_OUTSET;
+  const centreX = (bounds.x + bounds.width) * fit.scale + fit.offsetX + outset;
+  const centreY = bounds.y * fit.scale + fit.offsetY - outset;
+  const left = clampStart(centreX - size / 2, size, container.width);
+  let top = clampStart(centreY - size / 2, size, container.height);
 
   for (const exclusion of options.exclusions ?? []) {
     const hit = { x: left, y: top, width: size, height: size };

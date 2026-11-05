@@ -276,9 +276,21 @@ export function OutfitCanvas({
   const nodeRefs = useRef(new Map<string, Konva.Image>());
   const pillRef = useRef<HTMLDivElement>(null);
   const [stageSize, setStageSize] = useState({ width: 0, height: 0 });
-  /** A piece is being dragged or resized/rotated: the remove ✕ is hidden
-   *  meanwhile so it never lags behind the moving piece. */
-  const [gestureActive, setGestureActive] = useState(false);
+  /** Id of the piece being dragged or resized/rotated (null when idle): the
+   *  remove ✕ is hidden meanwhile so it never lags behind the moving piece.
+   *  Normally cleared by dragend/transformend; if those never arrive
+   *  (interrupted gesture, piece unmounted mid-gesture) it is also cleared
+   *  when the selection changes and on a window pointerup/pointercancel. */
+  const [gestureId, setGestureId] = useState<string | null>(null);
+  // Selection changed: drop a gesture that belongs to another piece. (A drag
+  // that starts on an unselected piece selects it in the same event, so its
+  // gesture id equals the new selection and is kept.) Adjusting state while
+  // rendering, per React's "storing information from previous renders".
+  const [prevSelectedId, setPrevSelectedId] = useState(selectedId);
+  if (prevSelectedId !== selectedId) {
+    setPrevSelectedId(selectedId);
+    if (gestureId !== null && gestureId !== selectedId) setGestureId(null);
+  }
   /** The selection pill's rect in container pixels (null until measured). */
   const [pillRect, setPillRect] = useState<LogicalRect | null>(null);
 
@@ -312,6 +324,7 @@ export function OutfitCanvas({
   const selectedItem =
     selectedId !== null ? (items.find((item) => item.id === selectedId) ?? null) : null;
   const showSelectionUi = !readOnly && selectedItem !== null;
+  const gestureActive = gestureId !== null;
 
   // Measure the pill (bottom-centre of the container) whenever it appears or
   // the container resizes, so the ✕ can be kept clear of it.
@@ -332,6 +345,26 @@ export function OutfitCanvas({
         : next,
     );
   }, [showSelectionUi, stageSize.width, stageSize.height]);
+
+  // Safety net for interrupted gestures: once the pointer is released or
+  // cancelled anywhere and Konva has no drag/transform left in progress, the
+  // gesture is over. (Konva's own dragend/transformend come from the later
+  // mouseup/touchend, so a normal drop still clears it there, not here.)
+  useEffect(() => {
+    if (readOnly || gestureId === null) return;
+    const handlePointerEnd = () => {
+      const busy =
+        Boolean(trRef.current?.isTransforming()) ||
+        [...nodeRefs.current.values()].some((node) => node.isDragging());
+      if (!busy) setGestureId(null);
+    };
+    window.addEventListener("pointerup", handlePointerEnd);
+    window.addEventListener("pointercancel", handlePointerEnd);
+    return () => {
+      window.removeEventListener("pointerup", handlePointerEnd);
+      window.removeEventListener("pointercancel", handlePointerEnd);
+    };
+  }, [readOnly, gestureId]);
 
   // Desktop: Delete / Backspace removes the selected piece, except while
   // typing in a field (e.g. the picker's search box), with a modifier held,
@@ -436,7 +469,7 @@ export function OutfitCanvas({
                 layout={layout}
                 onSelect={() => onSelect(item.id)}
                 onChangeTransform={(patch) => onChangeTransform(item.id, patch)}
-                onGestureChange={setGestureActive}
+                onGestureChange={(active) => setGestureId(active ? item.id : null)}
                 registerRef={(node) => {
                   if (node) nodeRefs.current.set(item.id, node);
                   else nodeRefs.current.delete(item.id);
@@ -450,8 +483,8 @@ export function OutfitCanvas({
                 enabledAnchors={["top-left", "top-right", "bottom-left", "bottom-right"]}
                 anchorSize={ANCHOR_SIZE}
                 rotateAnchorOffset={ROTATE_ANCHOR_OFFSET}
-                onTransformStart={() => setGestureActive(true)}
-                onTransformEnd={() => setGestureActive(false)}
+                onTransformStart={() => setGestureId(selectedId)}
+                onTransformEnd={() => setGestureId(null)}
                 boundBoxFunc={(oldBox, newBox) =>
                   newBox.width < MIN_SIZE || newBox.height < MIN_SIZE ? oldBox : newBox
                 }

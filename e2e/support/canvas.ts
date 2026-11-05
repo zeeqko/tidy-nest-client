@@ -273,6 +273,9 @@ export async function nodeScreenRect(page: Page, nodeIndex: number, stageIndex =
 
 /** Selects the placed piece at `nodeIndex` (layer order) with a click/tap and returns its toolbar. */
 export async function selectPiece(page: Page, testInfo: TestInfo, nodeIndex: number): Promise<Locator> {
+  // Konva redraws its hit graph on the next animation frame after a piece is
+  // added; a click before that misses the piece (and hits the Stage).
+  await page.evaluate(() => new Promise<void>((resolve) => requestAnimationFrame(() => requestAnimationFrame(() => resolve()))));
   const centre = await nodeScreenCenter(page, nodeIndex);
   if (testInfo.project.use.hasTouch) await page.touchscreen.tap(centre.x, centre.y);
   else await page.mouse.click(centre.x, centre.y);

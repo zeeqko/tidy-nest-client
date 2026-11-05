@@ -41,18 +41,28 @@ function expectSameNodes(actual: CanvasNode[], expected: CanvasNode[]) {
 const geometryDiff = (a: CanvasNode, b: CanvasNode) =>
   (["x", "y", "width", "height", "rotation"] as const).reduce((sum, key) => sum + Math.abs(a[key] - b[key]), 0);
 
-/** Distance (px) between the ✕'s box centre and the top-right corner of the
- *  rotated bounding box of the node at `nodeIndex`. */
+/** The ✕ is centred this far (px) right of and above the piece's corner
+ *  (the 22px circle's radius), so it mostly sits outside the piece. */
+const CROSS_OUTSET = 11;
+
+/** Distance (px) between the ✕'s box centre and where it belongs when not
+ *  clamped: (corner.x + 11, corner.y - 11), the corner being the top-right of
+ *  the rotated bounding box of the node at `nodeIndex`. */
 async function crossDistanceFromCorner(page: Page, nodeIndex: number) {
   const box = await removeCross(page).boundingBox();
   if (!box) return Number.POSITIVE_INFINITY;
   const r = await nodeScreenRect(page, nodeIndex);
-  return Math.hypot(box.x + box.width / 2 - (r.x + r.width), box.y + box.height / 2 - r.y);
+  return Math.hypot(
+    box.x + box.width / 2 - (r.x + r.width + CROSS_OUTSET),
+    box.y + box.height / 2 - (r.y - CROSS_OUTSET),
+  );
 }
 
 async function expectCrossOnCorner(page: Page, nodeIndex: number, label: string) {
   await expect
-    .poll(() => crossDistanceFromCorner(page, nodeIndex), { message: `${label}: ✕ sits on the piece's top-right corner` })
+    .poll(() => crossDistanceFromCorner(page, nodeIndex), {
+      message: `${label}: ✕ sits just outside the piece's top-right corner`,
+    })
     .toBeLessThan(1.5);
 }
 
@@ -118,6 +128,10 @@ test.describe("selection ✕ and pill", () => {
     expect(box.height, "✕ hit area is at least 44px tall").toBeGreaterThanOrEqual(44);
     // The ✕ and the pill never overlap.
     expect(boxesOverlap(box, (await selectionPill(page).boundingBox())!)).toBe(false);
+    // Only ~11px of the hit area reaches into the piece on each axis.
+    const pieceRect = await nodeScreenRect(page, top);
+    expect(pieceRect.x + pieceRect.width - box.x, "hit area's overlap with the piece (x)").toBeLessThanOrEqual(11.5);
+    expect(box.y + box.height - pieceRect.y, "hit area's overlap with the piece (y)").toBeLessThanOrEqual(11.5);
     await saveScreenshot(page, testInfo, "rb-a-selected");
     await saveScreenshot(page, testInfo, "rb-a-selected-canvas", { target: outfitCanvas(page) });
 
@@ -215,7 +229,8 @@ test.describe("selection ✕ and pill", () => {
     expect(box.y).toBeGreaterThanOrEqual(area.y - 0.5);
     expect(box.x + box.width).toBeLessThanOrEqual(area.x + area.width + 0.5);
     expect(box.y + box.height).toBeLessThanOrEqual(area.y + area.height + 0.5);
-    // Still at that corner (clamped by at most half its size).
+    // Still at that corner: within half its size of it (clamping only pulls
+    // it in from the unclamped corner + 11 / corner - 11 spot).
     expect(Math.abs(box.x + box.width / 2 - boardTopRight.x)).toBeLessThanOrEqual(box.width / 2 + 0.5);
     expect(Math.abs(box.y + box.height / 2 - boardTopRight.y)).toBeLessThanOrEqual(box.height / 2 + 0.5);
     await saveScreenshot(page, testInfo, "rb-c-corner", { target: outfitCanvas(page) });

@@ -16,7 +16,6 @@ import type { Rect } from "../lib/canvasSpace";
 import { createCutoutQueue } from "../lib/cutoutQueue";
 import { loadImageAspect } from "../lib/imageAspect";
 import { placeItem, startingZIndex } from "../lib/placement";
-import { normalizeZIndices } from "../lib/zIndex";
 import { buildGroupMap } from "../lib/pickerModel";
 import { countsByItemId, lastPlacementId } from "../lib/placementCounts";
 import { createSerialChain } from "../lib/serialChain";
@@ -227,12 +226,12 @@ export function OutfitBuilderPage() {
     setSaveError(null);
     // Built explicitly (never by spreading an `ApiLook`) — `name`/`imageURL`/
     // `cutoutURL` on each item are response-only and must not be sent back on
-    // write. Same shape for both create and edit. Z-indexes are saved dense
-    // (0..n-1 in stacking order) rather than the editor's sparse zone bands.
+    // write. Same shape for both create and edit. Z-indexes are saved as the
+    // editor holds them (sparse zone bands) so reopened looks keep their layering.
     const payload: NewLook = {
       name: trimmedName,
       occasion,
-      items: normalizeZIndices(state.items).map(({ itemId, x, y, width, height, rotation, zIndex }) => ({
+      items: state.items.map(({ itemId, x, y, width, height, rotation, zIndex }) => ({
         itemId,
         x,
         y,

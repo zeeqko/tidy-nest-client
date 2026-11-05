@@ -350,6 +350,32 @@ test.describe("fixed canvas", () => {
     await saveScreenshot(page, testInfo, "d-look-detail", { fullPage: true });
   });
 
+  test("(l) layering survives save and reopen: a piece added later lands in its own zone, not above the saved ones", async ({
+    authedPage: page,
+    userApi,
+  }, testInfo) => {
+    test.skip(testInfo.project.name !== "desktop", "layering is viewport-independent; one project is enough");
+    await openBuilder(page);
+    await addPiece(page, denim, 1); // Clothes > Outerwear (zone rank 2)
+    await addPiece(page, linen, 2); // Clothes > Tops (zone rank 1)
+    await saveNewLook(page, "Layered Look");
+    const [{ id }] = await userApi.looks();
+    // Reopen, add a rank-0 piece (shoes), save again.
+    await openBuilder(page, `/stylebook/${id}/edit`);
+    await expect(placedRegion(page).getByRole("listitem")).toHaveCount(2);
+    await selectGroup(page, "Shoes");
+    await addPiece(page, sneakers, 3);
+    await page.getByRole("button", { name: "Save Changes" }).click();
+    await expect(page).toHaveURL(new RegExp(`/stylebook/${id}$`));
+
+    const after = await userApi.look(id);
+    expect(after.items).toHaveLength(3);
+    const z = (name: string) => after.items.find((i) => i.name === name)!.zIndex;
+    expect(z(denim), "outerwear stays above the new shoes").toBeGreaterThan(z(sneakers));
+    expect(z(linen), "top stays above the new shoes").toBeGreaterThan(z(sneakers));
+    expect(z(denim), "outerwear stays above the top").toBeGreaterThan(z(linen));
+  });
+
   test("(j) resizing the window never changes saved logical positions", async ({ authedPage: page, userApi }, testInfo) => {
     test.skip(testInfo.project.name !== "desktop", "window resizing is a desktop scenario");
     await openBuilder(page);

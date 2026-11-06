@@ -356,7 +356,7 @@ export const outfitCanvas = (page: Page) => page.getByTestId("outfit-canvas");
 /** The selected piece's red remove ✕ (scoped to the canvas: the picker's
  *  count badges are also named "Remove last …"). */
 export const removeCross = (page: Page) => outfitCanvas(page).getByRole("button", { name: /^Remove / });
-/** The selection pill (send to back / bring to front / copy). */
+/** The selection pill (send to back / bring to front). */
 export const selectionPill = (page: Page) => outfitCanvas(page).getByRole("toolbar", { name: /actions$/ });
 
 /** Viewport rect of the placed node at `nodeIndex` (layer order): its rotated, axis-aligned bounding box, stroke excluded. */

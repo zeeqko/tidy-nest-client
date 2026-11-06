@@ -503,32 +503,29 @@ test.describe("picker tag row", () => {
 });
 
 test.describe("canvas toolbar", () => {
-  test("(k) after Copy, the Transformer resizes the copy and leaves the original untouched", async ({ authedPage: page }, testInfo) => {
+  test("(k) with two pieces of the same item, the Transformer resizes the top piece and leaves the other untouched", async ({ authedPage: page }, testInfo) => {
     test.skip(testInfo.project.name !== "desktop", "mouse-driven Transformer handle drag");
     await openBuilder(page);
     await addPiece(page, linen, 1);
-    await expect.poll(async () => (await canvasNodes(page))[0].hasImage).toBe(true);
-
-    const centre = await nodeScreenCenter(page, 0);
-    await page.mouse.click(centre.x, centre.y);
-    const toolbar = selectionPill(page);
-    await expect(toolbar).toBeVisible();
-    await toolbar.getByRole("button", { name: "Copy", exact: true }).click();
+    await addPiece(page, linen, 2);
     await expect.poll(async () => (await canvasNodes(page)).length).toBe(2);
-    // Let the copy's image load: before the fix this swapped the copy's node
-    // and left the Transformer on the destroyed one.
-    await expect.poll(async () => (await canvasNodes(page))[1].hasImage).toBe(true);
+    await expect.poll(async () => (await canvasNodes(page)).every((n) => n.hasImage)).toBe(true);
     await page.waitForTimeout(200);
     const [original, copy] = await canvasNodes(page);
-    expect(copy.x !== original.x || copy.y !== original.y, "the copy (top, last node) is offset from the original").toBe(true);
+    expect(copy.x !== original.x || copy.y !== original.y, "the second piece (top, last node) is offset from the first").toBe(true);
 
-    // Drag the copy's top-left handle inward: the copy shrinks.
+    // Select the top piece by clicking its centre.
+    const centre = await nodeScreenCenter(page, 1);
+    await page.mouse.click(centre.x, centre.y);
+    await expect(selectionPill(page)).toBeVisible();
+
+    // Drag the top piece's top-left handle inward: it shrinks.
     const handle = await anchorPoint(page, "top-left");
     await mouseDrag(page, handle, { x: handle.x + 40, y: handle.y + 40 }, 10);
     await page.waitForTimeout(300);
     const after = await canvasNodes(page);
     expect(after).toHaveLength(2);
-    expect(after[1].width, "copy was resized").toBeLessThan(copy.width - 5);
+    expect(after[1].width, "top piece was resized").toBeLessThan(copy.width - 5);
     expectSameNodes([after[0]], [original]);
   });
 

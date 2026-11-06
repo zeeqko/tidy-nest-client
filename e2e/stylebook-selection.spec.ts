@@ -1,6 +1,6 @@
 // End-to-end tests for the builder's selection controls: the red ✕ on the
 // selected piece's top-right corner (remove), the dark pill with send to
-// back / bring to front / copy, and the desktop Delete / Backspace shortcut.
+// back / bring to front, and the desktop Delete / Backspace shortcut.
 // Runs in the desktop (1440x900, mouse) and mobile (390x844, touch)
 // projects; viewport-specific tests skip themselves.
 import type { Page, TestInfo } from "@playwright/test";
@@ -151,7 +151,7 @@ test.describe("selection ✕ and pill", () => {
     await expect(selectionPill(page)).toHaveCount(0);
   });
 
-  test("(b) the pill has exactly send to back, bring to front and copy, and each still works", async ({
+  test("(b) the pill has exactly send to back and bring to front (no Copy), and each still works", async ({
     authedPage: page,
   }, testInfo) => {
     await openBuilder(page);
@@ -160,13 +160,13 @@ test.describe("selection ✕ and pill", () => {
 
     const pill = await selectPiece(page, testInfo, 1);
     const buttons = pill.getByRole("button");
-    await expect(buttons).toHaveCount(3);
+    await expect(buttons).toHaveCount(2);
     expect(await buttons.evaluateAll((els) => els.map((el) => el.getAttribute("aria-label")))).toEqual([
       "Send to back",
       "Bring to front",
-      "Copy",
     ]);
     await expect(pill.getByRole("button", { name: /Remove/ })).toHaveCount(0);
+    await expect(pill.getByRole("button", { name: /copy|duplicate/i })).toHaveCount(0);
     // No piece-name text in the pill.
     await expect(pill).toHaveText("");
     // Fully inside the canvas.
@@ -183,7 +183,6 @@ test.describe("selection ✕ and pill", () => {
       }
     }
 
-    const selectedName = (await removeCross(page).getAttribute("aria-label"))!.replace(/^Remove /, "");
     const [bottom, topNode] = await canvasNodes(page);
 
     // Send to back: the selected (top) piece becomes the first in layer order.
@@ -194,14 +193,6 @@ test.describe("selection ✕ and pill", () => {
     await pill.getByRole("button", { name: "Bring to front" }).click();
     await expect.poll(async () => geometryDiff((await canvasNodes(page))[1], topNode)).toBeLessThan(1e-6);
     expectSameNodes(await canvasNodes(page), [bottom, topNode]);
-
-    // Copy: one more piece of the same item, on top and selected.
-    await pill.getByRole("button", { name: "Copy", exact: true }).click();
-    await expect.poll(async () => (await canvasNodes(page)).length).toBe(3);
-    await expect(countBadge(page, selectedName)).toHaveAccessibleName(
-      `Remove last ${selectedName} from canvas (2 on canvas)`,
-    );
-    await expectCrossOnCorner(page, 2, "on the selected copy");
   });
 
   test("(c) a piece dragged into the panel's top-right corner still has its ✕ fully inside the canvas", async ({

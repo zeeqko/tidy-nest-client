@@ -500,9 +500,6 @@ export function OutfitBuilderPage() {
                 onReorder={(placementId, direction) =>
                   dispatch({ type: "reorder", id: placementId, direction })
                 }
-                onCopy={(placementId, bounds) =>
-                  dispatch({ type: "copy", id: placementId, newId: crypto.randomUUID(), bounds })
-                }
                 onRemove={(placementId) => dispatch({ type: "remove", id: placementId })}
                 onUndo={sheetOpen ? undefined : undo}
                 onRedo={sheetOpen ? undefined : redo}

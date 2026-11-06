@@ -158,7 +158,6 @@ export function LookDetailPage() {
               onSelect={noop}
               onChangeTransform={noop}
               onReorder={noop}
-              onCopy={noop}
               onRemove={noop}
             />
           </div>

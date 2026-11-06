@@ -1,7 +1,7 @@
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import type Konva from "konva";
 import { Image as KonvaImage, Layer, Stage, Transformer } from "react-konva";
-import { ArrowDownToLine, ArrowUpToLine, Copy, Shirt, X } from "lucide-react";
+import { ArrowDownToLine, ArrowUpToLine, Shirt, X } from "lucide-react";
 import type { PlacedItem } from "./OutfitBuilderPage";
 import {
   clampItem,
@@ -63,8 +63,6 @@ export interface OutfitCanvasProps {
    *  the same rect). */
   onChangeTransform(id: string, patch: TransformPatch, bounds: LogicalRect): void;
   onReorder(id: string, direction: "front" | "back"): void;
-  /** `bounds`: the panel's visible logical rect, to clamp the offset copy into. */
-  onCopy(id: string, bounds: LogicalRect): void;
   onRemove(id: string): void;
   /** Cmd/Ctrl+Z / Cmd/Ctrl+Shift+Z or Ctrl+Y (omit to leave the keys alone). */
   onUndo?(): void;
@@ -272,7 +270,7 @@ const PILL_BUTTON =
  *  dragging empty space does nothing (and `touch-action: none` stops it
  *  scrolling the page); tapping empty space deselects. The selected piece
  *  gets a red ✕ (HTML button overlaid on its top-right corner) to remove it,
- *  plus a dark pill at the bottom with send-to-back / bring-to-front / copy;
+ *  plus a dark pill at the bottom with send-to-back / bring-to-front;
  *  on desktop Delete / Backspace also removes it. */
 export function OutfitCanvas({
   items,
@@ -280,7 +278,6 @@ export function OutfitCanvas({
   onSelect,
   onChangeTransform,
   onReorder,
-  onCopy,
   onRemove,
   onUndo,
   onRedo,
@@ -582,14 +579,6 @@ export function OutfitCanvas({
             className={PILL_BUTTON}
           >
             <ArrowUpToLine size={15} />
-          </button>
-          <button
-            type="button"
-            onClick={() => onCopy(selectedItem.id, bounds)}
-            aria-label="Copy"
-            className={PILL_BUTTON}
-          >
-            <Copy size={15} />
           </button>
         </div>
       )}

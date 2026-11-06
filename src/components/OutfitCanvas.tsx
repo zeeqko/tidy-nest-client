@@ -14,7 +14,7 @@ import {
   type StageFit,
 } from "../lib/canvasSpace";
 import { CROSS_HIT_SIZE, crossButtonPosition } from "../lib/crossButton";
-import { shouldDeleteOnKey } from "../lib/canvasKeyboard";
+import { shouldDeleteOnKey, undoRedoFromKey } from "../lib/canvasKeyboard";
 
 /** Every placed item's (x, y, width, height) is in the logical units of the
  *  DESIGN_WIDTH x DESIGN_HEIGHT (400x711, 9:16) base space from
@@ -66,6 +66,9 @@ export interface OutfitCanvasProps {
   /** `bounds`: the panel's visible logical rect, to clamp the offset copy into. */
   onCopy(id: string, bounds: LogicalRect): void;
   onRemove(id: string): void;
+  /** Cmd/Ctrl+Z / Cmd/Ctrl+Shift+Z or Ctrl+Y (omit to leave the keys alone). */
+  onUndo?(): void;
+  onRedo?(): void;
   /** Renders non-interactively: no dragging, selection, Transformer, remove
    *  ✕, toolbar pill or Delete key, and the page may scroll over it (used by
    *  Look detail). */
@@ -279,6 +282,8 @@ export function OutfitCanvas({
   onReorder,
   onCopy,
   onRemove,
+  onUndo,
+  onRedo,
   readOnly = false,
   viewRect,
   fitKey = 0,
@@ -409,6 +414,24 @@ export function OutfitCanvas({
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
   }, [readOnly, selectedId, onRemove]);
+
+  // Desktop: Cmd/Ctrl+Z undoes, Cmd/Ctrl+Shift+Z and Ctrl+Y redo (same
+  // guards as Delete: not in a text field or dialog, not mid gesture).
+  useEffect(() => {
+    if (readOnly || (!onUndo && !onRedo)) return;
+    const handleKeyDown = (event: KeyboardEvent) => {
+      const step = undoRedoFromKey(event, document.activeElement);
+      if (!step) return;
+      const busy =
+        Boolean(trRef.current?.isTransforming()) ||
+        [...nodeRefs.current.values()].some((node) => node.isDragging());
+      if (busy) return;
+      event.preventDefault();
+      (step === "undo" ? onUndo : onRedo)?.();
+    };
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [readOnly, onUndo, onRedo]);
 
   useEffect(() => {
     const transformer = trRef.current;

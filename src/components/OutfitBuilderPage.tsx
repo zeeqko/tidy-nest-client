@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type Ref } from "react";
 import type { LucideIcon } from "lucide-react";
-import { LoaderCircle, Redo2, Undo2, X } from "lucide-react";
+import { LoaderCircle, X } from "lucide-react";
 import { Link, useNavigate, useParams } from "react-router-dom";
 import { MobileTopBar } from "./MobileTopBar";
 import { OutfitCanvas, type TransformPatch } from "./OutfitCanvas";
@@ -62,9 +62,6 @@ const NO_PIECES_HINT = "Add at least one piece";
 /** How long the quiet "couldn't remove the background" note stays up. */
 const CUTOUT_FAILURE_MS = 5000;
 
-const HEADER_ICON_BUTTON =
-  "flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-cute-surface-alt text-cute-text transition hover:brightness-95 disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:brightness-100";
-
 /** A single inventory item placed into the look-in-progress, shaped like the
  *  eventual `POST /api/looks` payload (`itemId` + transform, in the logical
  *  units of the 400x711 canvas space; may lie outside it) plus just enough
@@ -90,61 +87,7 @@ export interface PlacedItem {
   iconColor: string;
 }
 
-/** Phone variant: one segmented pill (as in the design) so the top bar keeps
- *  room for the title next to Save. */
-const COMPACT_UNDO_REDO_BUTTON =
-  "flex h-9 w-9 items-center justify-center rounded-full text-cute-text transition hover:brightness-95 disabled:cursor-not-allowed disabled:opacity-40";
-
-function UndoRedoButtons({
-  canUndo,
-  canRedo,
-  onUndo,
-  onRedo,
-  compact,
-}: {
-  canUndo: boolean;
-  canRedo: boolean;
-  onUndo(): void;
-  onRedo(): void;
-  compact?: boolean;
-}) {
-  if (compact) {
-    return (
-      <div className="flex shrink-0 items-center rounded-full bg-cute-surface-alt">
-        <button type="button" onClick={onUndo} disabled={!canUndo} aria-label="Undo" className={COMPACT_UNDO_REDO_BUTTON}>
-          <Undo2 size={17} />
-        </button>
-        <button type="button" onClick={onRedo} disabled={!canRedo} aria-label="Redo" className={COMPACT_UNDO_REDO_BUTTON}>
-          <Redo2 size={17} />
-        </button>
-      </div>
-    );
-  }
-  return (
-    <div className="flex shrink-0 items-center gap-2">
-      <button
-        type="button"
-        onClick={onUndo}
-        disabled={!canUndo}
-        aria-label="Undo"
-        className={HEADER_ICON_BUTTON}
-      >
-        <Undo2 size={18} />
-      </button>
-      <button
-        type="button"
-        onClick={onRedo}
-        disabled={!canRedo}
-        aria-label="Redo"
-        className={HEADER_ICON_BUTTON}
-      >
-        <Redo2 size={18} />
-      </button>
-    </div>
-  );
-}
-
-/** Outfit Builder page: header (undo/redo and the Save pill), then two docked
+/** Outfit Builder page: header (title and the Save pill), then two docked
  *  panels — the 9:16 arrange canvas and the Stylebook picker, side by side
  *  from `lg` and stacked (canvas ~3/5 over picker ~2/5) below it, never
  *  overlapping. Save opens `SaveLookSheet` (name, occasion, save actions).
@@ -160,7 +103,11 @@ export function OutfitBuilderPage() {
   const navigate = useNavigate();
   const { look, loading: lookLoading, error: lookError } = useLook(id);
   const { categories } = useCategories();
-  const { state, dispatch, canUndo, canRedo } = useLookEditor();
+  const { state, dispatch } = useLookEditor();
+  // Keyboard shortcuts only (the header has no buttons); one history step
+  // each, a no-op on an empty stack.
+  const undo = useCallback(() => dispatch({ type: "undo" }), [dispatch]);
+  const redo = useCallback(() => dispatch({ type: "redo" }), [dispatch]);
   // `name` only counts once the user has typed (or it was loaded for edit);
   // until then the sheet shows the live auto name instead.
   const [name, setName] = useState("");
@@ -472,16 +419,6 @@ export function OutfitBuilderPage() {
     }
   }
 
-  const undoRedo = (compact: boolean) => (
-    <UndoRedoButtons
-      canUndo={canUndo}
-      canRedo={canRedo}
-      onUndo={() => dispatch({ type: "undo" })}
-      onRedo={() => dispatch({ type: "redo" })}
-      compact={compact}
-    />
-  );
-
   // aria-disabled (not `disabled`) keeps it focusable, its tooltip working,
   // and lets a tap show the "Add at least one piece" bubble below it (a
   // live region, so it's announced too).
@@ -515,12 +452,7 @@ export function OutfitBuilderPage() {
           title={isEditing ? "Edit Look" : "Create a Look"}
           backTo={backTarget}
           flush
-          action={
-            <div className="flex shrink-0 items-center gap-1.5">
-              {undoRedo(true)}
-              {saveButton(mobileSaveRef)}
-            </div>
-          }
+          action={saveButton(mobileSaveRef)}
         />
 
         <div className="hidden sm:block">
@@ -536,7 +468,6 @@ export function OutfitBuilderPage() {
               </p>
             </div>
             <div className="flex shrink-0 items-center gap-2">
-              {undoRedo(false)}
               {saveButton(desktopSaveRef)}
               <button
                 type="button"
@@ -573,6 +504,8 @@ export function OutfitBuilderPage() {
                   dispatch({ type: "copy", id: placementId, newId: crypto.randomUUID(), bounds })
                 }
                 onRemove={(placementId) => dispatch({ type: "remove", id: placementId })}
+                onUndo={sheetOpen ? undefined : undo}
+                onRedo={sheetOpen ? undefined : redo}
               />
             </div>
             {/* Cutout progress, top-left of the panel (the ✕ and handles

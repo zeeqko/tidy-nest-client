@@ -38,3 +38,26 @@ export function shouldDeleteOnKey(event: KeyEventLike, active: ActiveElementLike
   }
   return true;
 }
+
+/**
+ * Which history step a keydown asks for: Cmd/Ctrl+Z undoes, Cmd/Ctrl+Shift+Z
+ * and Ctrl+Y redo (Meta on macOS, Ctrl elsewhere: either is accepted). Not
+ * while Alt is held, on auto-repeat, mid IME composition, when already
+ * handled, while focus is in a text field (so the browser's own text undo
+ * keeps working) nor inside a dialog. Returns null when it is not ours.
+ */
+export function undoRedoFromKey(
+  event: KeyEventLike,
+  active: ActiveElementLike | null,
+): "undo" | "redo" | null {
+  if (event.altKey || event.repeat || event.isComposing || event.defaultPrevented) return null;
+  if (active) {
+    if (TEXT_ENTRY_TAGS.has(active.tagName.toUpperCase())) return null;
+    if (active.isContentEditable) return null;
+    if (active.closest?.(MODAL_SELECTOR)) return null;
+  }
+  const key = event.key.toLowerCase();
+  if (key === "z" && (event.ctrlKey || event.metaKey)) return event.shiftKey ? "redo" : "undo";
+  if (key === "y" && event.ctrlKey && !event.metaKey && !event.shiftKey) return "redo";
+  return null;
+}

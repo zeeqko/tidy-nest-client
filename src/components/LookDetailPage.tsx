@@ -13,9 +13,7 @@ import { rotatedBounds } from "../lib/canvasSpace";
 // The read-only canvas never calls these; stable module-level no-ops.
 const noop = () => {};
 
-/** Occasion badge treatment lifted from `LookCard`'s thumbnail overlay,
- *  minus the absolute positioning that only makes sense pinned over an
- *  image — same visual chip everywhere a look's occasion is shown. */
+/** Small white chip showing a look's occasion next to its name. */
 function OccasionBadge({ occasion }: { occasion: string }) {
   return (
     <span className="max-w-full truncate rounded-full bg-white/90 px-2.5 py-1 font-body text-cute-11 font-semibold text-cute-text shadow-[0_1px_3.5px_-1px_rgba(0,0,0,0.06)]">

@@ -1,156 +1,187 @@
-import { useMemo, useState } from "react";
-import { Plus, Shirt } from "lucide-react";
+import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { Plus } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import { MobileTopBar } from "./MobileTopBar";
 import { FilterPill } from "./FilterPill";
 import { LookCard } from "./LookCard";
-import { EmptyState } from "./EmptyState";
-import { ConfirmDeleteModal } from "./ConfirmDeleteModal";
 import { useLooks } from "../hooks/useLooks";
-import { seedOccasions } from "../data/occasions";
-import { deleteLook, type ApiLook } from "../api/looks";
+import { ALL_OCCASIONS, filterLooks, lookCountLabel, occasionFilters } from "../lib/styleBookList";
 
+/** Quiet centred empty block (no icon): Fredoka heading, one muted line, one action. */
+function QuietEmpty({ heading, body, action }: { heading: string; body: string; action: ReactNode }) {
+  return (
+    <div className="flex w-full flex-col items-center gap-2 px-6 py-16 text-center">
+      <p className="font-heading text-cute-22 font-semibold text-cute-text">{heading}</p>
+      <p className="font-body text-cute-13 font-medium text-cute-text-muted">{body}</p>
+      <div className="mt-3">{action}</div>
+    </div>
+  );
+}
+
+const newLookButtonClass =
+  "flex items-center justify-center gap-1.5 rounded-full bg-cute-primary font-body font-bold text-cute-primary-foreground transition hover:brightness-105 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-cute-primary";
+
+/**
+ * Style Book list. Two layouts split at `sm`:
+ * - phone: back-button top bar with a "N looks" line, a one-line sideways
+ *   scrolling pill row, a 2-column grid of image-only tiles, and a floating
+ *   "New look" pill above the bottom nav;
+ * - web: a heading row ("Style Book" + count, "New look" on the right), plain
+ *   text filters (active = underlined), and an auto-fill grid of tiles whose
+ *   name/occasion caption appears on hover or keyboard focus.
+ * Tapping a tile opens the look's detail page, which owns edit and delete.
+ */
 export function StyleBookPage() {
-  const { looks, loading, error, refresh } = useLooks();
-  const [activeOccasion, setActiveOccasion] = useState("All");
-  const [deleteTarget, setDeleteTarget] = useState<ApiLook | null>(null);
-  const [deleteError, setDeleteError] = useState<string | null>(null);
+  const { looks, loading, error } = useLooks();
+  const [activeOccasion, setActiveOccasion] = useState(ALL_OCCASIONS);
   const navigate = useNavigate();
+  const pillRowRef = useRef<HTMLDivElement>(null);
 
   const createLook = () => navigate("/stylebook/create");
-  const selectLook = (look: ApiLook) => navigate(`/stylebook/${look.id}`);
-  const editLook = (look: ApiLook) => navigate(`/stylebook/${look.id}/edit`);
+  const clearFilter = () => setActiveOccasion(ALL_OCCASIONS);
 
-  const confirmDelete = async () => {
-    if (!deleteTarget) return;
-    try {
-      await deleteLook(deleteTarget.id);
-      setDeleteTarget(null);
-      setDeleteError(null);
-      await refresh();
-    } catch (err) {
-      setDeleteError(err instanceof Error ? err.message : "Failed to delete this look");
-      setDeleteTarget(null);
+  const occasions = useMemo(() => occasionFilters(looks), [looks]);
+  const filteredLooks = useMemo(() => filterLooks(looks, activeOccasion), [looks, activeOccasion]);
+
+  const loaded = !loading && !error;
+  const emptyAll = loaded && looks.length === 0;
+  // Reserve the count line's height while loading so nothing jumps.
+  const countLabel = loaded ? lookCountLabel(filteredLooks.length) : " ";
+
+  // Keep the selected pill fully visible in the phone's sideways-scrolling
+  // row. Scrolls only the row (not the page); a no-op while the row is
+  // hidden (web layout: no offsetParent).
+  useEffect(() => {
+    const row = pillRowRef.current;
+    const pill = row?.querySelector<HTMLElement>('[aria-pressed="true"]');
+    if (!row || !pill || pill.offsetParent !== row) return;
+    const pad = 20;
+    const left = pill.offsetLeft - pad;
+    const right = pill.offsetLeft + pill.offsetWidth + pad;
+    if (left < row.scrollLeft) row.scrollTo({ left, behavior: "smooth" });
+    else if (right > row.scrollLeft + row.clientWidth) {
+      row.scrollTo({ left: right - row.clientWidth, behavior: "smooth" });
     }
-  };
-
-  const occasions = useMemo(() => {
-    const extra = Array.from(
-      new Set(
-        looks
-          .map((look) => look.occasion)
-          .filter((occasion): occasion is string => Boolean(occasion) && !seedOccasions.includes(occasion)),
-      ),
-    );
-    return ["All", ...seedOccasions, ...extra];
-  }, [looks]);
-
-  const filteredLooks = useMemo(() => {
-    if (activeOccasion === "All") return looks;
-    return looks.filter((look) => look.occasion === activeOccasion);
-  }, [looks, activeOccasion]);
-
-  const clearFilter = () => setActiveOccasion("All");
+  }, [activeOccasion]);
 
   return (
-    <div className="w-full px-5 pt-2 pb-10 sm:px-10">
-      <div className="mx-auto flex w-full max-w-cute-page 2xl:max-w-cute-page-wide flex-col gap-4 sm:gap-9">
-        <MobileTopBar
-          title="Style Book"
-          backTo="/"
-          action={
-            <button
-              type="button"
-              onClick={createLook}
-              aria-label="Create Look"
-              className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-cute-primary text-cute-primary-foreground transition hover:brightness-105"
-            >
-              <Plus size={18} />
-            </button>
-          }
-        />
-        <div className="hidden sm:block">
-          <div className="flex w-full items-center justify-between">
-            <div className="flex flex-col gap-1">
-              <h1 className="font-heading text-cute-fluid-26 font-semibold text-cute-text">
-                Style Book
-              </h1>
-              <p className="font-body text-sm text-cute-text-muted">
-                {filteredLooks.length} {filteredLooks.length === 1 ? "look" : "looks"} styled from
-                your closet
-              </p>
-            </div>
-            <button
-              type="button"
-              onClick={createLook}
-              className="flex items-center gap-1.5 rounded-full bg-cute-primary px-4 py-2.5 font-body text-sm font-medium text-cute-primary-foreground transition hover:brightness-105"
-            >
-              <Plus size={16} />
-              Create Look
-            </button>
+    <div className="w-full px-5 pt-2 pb-20 sm:px-12 sm:pt-6 sm:pb-12 lg:px-20">
+      <div className="flex w-full max-w-[60rem] flex-col gap-4 sm:gap-6 2xl:max-w-[72rem]">
+        <MobileTopBar title="Style Book" subtitle={countLabel} backTo="/" flush />
+
+        <div className="hidden w-full items-center justify-between gap-6 sm:flex">
+          <div className="flex min-w-0 flex-col gap-0.5">
+            <h1 className="font-heading text-cute-30 leading-tight font-semibold text-cute-text">Style Book</h1>
+            <p className="font-body text-cute-13 font-medium text-cute-text-muted">{countLabel}</p>
           </div>
+          <button type="button" onClick={createLook} className={`${newLookButtonClass} h-[38px] shrink-0 px-5 text-cute-13`}>
+            <Plus size={15} strokeWidth={2.5} />
+            New look
+          </button>
         </div>
 
-        <div className="flex w-full flex-wrap items-center gap-2.5">
-          {occasions.map((occasion) => (
-            <FilterPill
-              key={occasion}
-              label={occasion}
-              active={occasion === activeOccasion}
-              onClick={() => setActiveOccasion(occasion)}
-              size="sm"
-            />
-          ))}
-        </div>
+        {looks.length > 0 && (
+          <>
+            {/* Phone: one line of pills, scrolling sideways edge to edge. */}
+            <div
+              ref={pillRowRef}
+              data-testid="occasion-pills"
+              className="no-scrollbar relative -mx-5 flex flex-nowrap gap-2 overflow-x-auto px-5 py-1 sm:hidden [&>*]:shrink-0 [&>*]:whitespace-nowrap"
+            >
+              {occasions.map((occasion) => (
+                <FilterPill
+                  key={occasion}
+                  label={occasion}
+                  active={occasion === activeOccasion}
+                  pressed={occasion === activeOccasion}
+                  onClick={() => setActiveOccasion(occasion)}
+                  size="sm"
+                />
+              ))}
+            </div>
+
+            {/* Web: plain text filters; the active one is darker with an underline. */}
+            <div data-testid="occasion-text-filters" className="hidden flex-wrap items-center gap-x-7 gap-y-2 sm:flex">
+              {occasions.map((occasion) => {
+                const active = occasion === activeOccasion;
+                return (
+                  <button
+                    key={occasion}
+                    type="button"
+                    aria-pressed={active}
+                    onClick={() => setActiveOccasion(occasion)}
+                    className={`rounded-sm border-b-2 pb-1 font-body text-cute-13 transition outline-none focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-cute-primary ${
+                      active
+                        ? "border-cute-primary font-bold text-cute-text"
+                        : "border-transparent font-semibold text-cute-text-muted hover:text-cute-text"
+                    }`}
+                  >
+                    {occasion}
+                  </button>
+                );
+              })}
+            </div>
+          </>
+        )}
 
         {error ? (
           <p className="w-full py-10 text-center font-body text-sm text-cute-danger">
             Couldn't load your Style Book from the server: {error}
           </p>
         ) : loading ? (
-          <p className="w-full py-10 text-center font-body text-sm text-cute-text-muted">
-            Loading looks…
-          </p>
-        ) : looks.length === 0 ? (
-          <EmptyState
-            icon={Shirt}
-            heading="Your Style Book is empty"
-            body="Build your first outfit from pieces already in your closet."
-            action={{ label: "Create Look", onClick: createLook }}
+          <p className="w-full py-10 text-center font-body text-sm text-cute-text-muted">Loading looks…</p>
+        ) : emptyAll ? (
+          <QuietEmpty
+            heading="Nothing here yet"
+            body="Build a look from your closet."
+            action={
+              <button type="button" onClick={createLook} className={`${newLookButtonClass} h-[38px] px-5 text-cute-13`}>
+                <Plus size={15} strokeWidth={2.5} />
+                New look
+              </button>
+            }
           />
         ) : filteredLooks.length === 0 ? (
-          <EmptyState
-            icon={Shirt}
+          <QuietEmpty
             heading="No looks for this occasion yet"
             body="Try a different occasion, or clear the filter to see every look."
-            action={{ label: "Clear filter", onClick: clearFilter }}
+            action={
+              <button
+                type="button"
+                onClick={clearFilter}
+                className="rounded-full border border-cute-border bg-cute-surface px-4 py-2 font-body text-cute-13 font-semibold text-cute-text transition hover:bg-cute-surface-alt focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-cute-primary"
+              >
+                Clear filter
+              </button>
+            }
           />
         ) : (
-          <div className="grid w-full grid-cols-2 gap-3 sm:cute-card-grid sm:gap-6">
+          <ul
+            aria-label="Looks"
+            className="grid w-full grid-cols-2 gap-2.5 sm:grid-cols-[repeat(auto-fill,minmax(9.5rem,1fr))] sm:gap-x-6 sm:gap-y-2"
+          >
             {filteredLooks.map((look) => (
-              <LookCard
-                key={look.id}
-                look={look}
-                onSelect={selectLook}
-                onEdit={editLook}
-                onDelete={setDeleteTarget}
-              />
+              <li key={look.id} className="min-w-0">
+                <LookCard look={look} />
+              </li>
             ))}
-          </div>
-        )}
-
-        {deleteError && (
-          <p className="w-full font-body text-sm text-cute-danger">{deleteError}</p>
+          </ul>
         )}
       </div>
 
-      {deleteTarget && (
-        <ConfirmDeleteModal
-          title={`Delete "${deleteTarget.name}"?`}
-          message="This removes the look from your Style Book. This can't be undone."
-          onCancel={() => setDeleteTarget(null)}
-          onConfirm={confirmDelete}
-        />
+      {/* Phone: floating "New look", clear of the bottom nav (~66px + safe
+          area, plus its raised centre button) by ~1rem. The empty state has
+          its own button, so it isn't doubled there. */}
+      {!emptyAll && (
+        <button
+          type="button"
+          onClick={createLook}
+          data-testid="floating-new-look"
+          className={`${newLookButtonClass} fixed bottom-[calc(5.25rem+env(safe-area-inset-bottom))] left-1/2 z-30 h-11 -translate-x-1/2 px-6 text-sm shadow-[0_8px_20px_-6px_rgba(74,53,56,0.45)] sm:hidden`}
+        >
+          <Plus size={16} strokeWidth={2.5} />
+          New look
+        </button>
       )}
     </div>
   );

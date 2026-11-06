@@ -68,11 +68,12 @@
   --container-cute-page-wide: 100rem;
 }
 
-/* Fluid card grid: auto-fill columns at least 10rem wide. Meant for `sm` and
-   up, paired with the phone default: `grid grid-cols-2 sm:cute-card-grid`. */
-@utility cute-card-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(10rem, 1fr));
+/* Hides the scrollbar but keeps the element scrollable (one-line chip rows). */
+@utility no-scrollbar {
+  scrollbar-width: none;
+  &::-webkit-scrollbar {
+    display: none;
+  }
 }
 
 html {

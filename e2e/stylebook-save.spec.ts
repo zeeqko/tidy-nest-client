@@ -281,7 +281,7 @@ test.describe("save sheet", () => {
     await expect(hint).toHaveCount(0, { timeout: 1000 });
     await expect(save).toBeEnabled();
     expect(await save.getAttribute("title")).toBeNull();
-    await page.getByRole("button", { name: "Undo" }).filter({ visible: true }).click();
+    await page.keyboard.press("Control+z");
     await expect.poll(async () => (await canvasNodes(page)).length).toBe(0);
     await expect(save).toBeDisabled();
   });

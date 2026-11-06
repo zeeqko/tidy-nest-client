@@ -1,7 +1,7 @@
 // End-to-end tests for background removal of pieces already on the canvas:
 // when an item's cutout becomes ready, every placed piece of it swaps from
 // the photo to the cutout in place (same box), the "Removing background…"
-// status shows meanwhile, Undo/Redo keep the cutout, and a failed removal
+// status shows meanwhile, Undo/Redo (keyboard) keep the cutout, and a failed removal
 // leaves the photo with a quiet, transient note. Runs in the desktop
 // (1440x900, mouse) and mobile (390x844, touch) projects.
 //
@@ -17,9 +17,9 @@ import {
   canvasNodes,
   cutoutStatus,
   openBuilder,
-  redoButton,
+  pressRedo,
   saveScreenshot,
-  undoButton,
+  pressUndo,
   type CanvasNode,
 } from "./support/canvas";
 import { fakeCutoutRequests, installFakeCutoutWorker, releaseFakeCutouts } from "./support/fakeCutoutWorker";
@@ -82,18 +82,19 @@ test.describe("cutout swap on the canvas", () => {
 
     // The swap was not an edit: one Undo removes the linen shirt (the last
     // add), the blouse keeps its cutout.
-    await undoButton(page).click();
+    await pressUndo(page);
     await expect.poll(async () => (await canvasNodes(page)).length).toBe(1);
     expect((await canvasNodes(page))[0].imageSrc).toMatch(new RegExp(`${cutoutURL}$`));
     // Undo the blouse add too, then Redo it back: still the cutout.
-    await undoButton(page).click();
+    await pressUndo(page);
     await expect.poll(async () => (await canvasNodes(page)).length).toBe(0);
-    await expect(undoButton(page)).toBeDisabled();
-    await redoButton(page).click();
+    await pressUndo(page); // nothing left to undo
+    await expect.poll(async () => (await canvasNodes(page)).length).toBe(0);
+    await pressRedo(page);
     await expect.poll(async () => (await canvasNodes(page)).length).toBe(1);
     await expect.poll(async () => (await canvasNodes(page))[0].imageSrc ?? "").toMatch(new RegExp(`${cutoutURL}$`));
     expect(geometry((await canvasNodes(page))[0])).toEqual(geometry(before));
-    await redoButton(page).click();
+    await pressRedo(page);
     await expect.poll(async () => (await canvasNodes(page)).length).toBe(2);
     expect(await blouseNode(page, [cutoutURL]), "blouse still drawn as its cutout").not.toBeNull();
     expect(await blouseNode(page, [blouse.photoURL]), "no piece reverted to the photo").toBeNull();
@@ -155,9 +156,12 @@ test.describe("cutout swap on the canvas", () => {
     for (const key of ["x", "y", "width", "height", "rotation"] as const) {
       expect(node[key], key).toBeCloseTo(placed[key], 6);
     }
-    // Neither loading nor the swap is an edit.
-    await expect(undoButton(page)).toBeDisabled();
-    await expect(redoButton(page)).toBeDisabled();
+    // Neither loading nor the swap is an edit: the shortcuts change nothing.
+    await pressUndo(page);
+    await pressRedo(page);
+    await page.waitForTimeout(300);
+    expect((await canvasNodes(page)).length, "undo/redo after load changed nothing").toBe(1);
+    expect(geometry((await canvasNodes(page))[0])).toEqual(geometry(node));
     await saveScreenshot(page, testInfo, "cutout-edit-swapped");
   });
 });

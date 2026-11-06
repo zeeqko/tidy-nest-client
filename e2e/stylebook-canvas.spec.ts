@@ -92,8 +92,8 @@ test.describe("picker tap-to-add", () => {
     const twoCopies = await canvasNodes(page);
     expect(twoCopies.some((n) => n.x !== first.x || n.y !== first.y), "second copy is placed apart from the first").toBe(true);
 
-    // One Undo removes only the last placement.
-    await page.getByRole("button", { name: "Undo" }).filter({ visible: true }).click();
+    // One Undo (Ctrl+Z) removes only the last placement.
+    await page.keyboard.press("Control+z");
     await expect.poll(async () => (await canvasNodes(page)).length).toBe(1);
     await expect(badge).toHaveAccessibleName(`Remove last ${linen} from canvas (1 on canvas)`);
     expectSameNodes(await canvasNodes(page), [first]);

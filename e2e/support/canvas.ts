@@ -346,9 +346,10 @@ export async function addPiece(page: Page, name: string, expectedTotal: number) 
 
 /** The builder's cutout progress region (top-left of the canvas panel). */
 export const cutoutStatus = (page: Page) => canvasPanel(page).getByTestId("cutout-status");
-/** The visible Undo / Redo button (phone or desktop header). */
-export const undoButton = (page: Page) => page.getByRole("button", { name: "Undo", exact: true }).filter({ visible: true });
-export const redoButton = (page: Page) => page.getByRole("button", { name: "Redo", exact: true }).filter({ visible: true });
+/** Undo / Redo via the builder's keyboard shortcuts (the header has no
+ *  buttons). Focus must not be in a text field; the e2e browser is Chromium. */
+export const pressUndo = (page: Page) => page.keyboard.press("Control+z");
+export const pressRedo = (page: Page) => page.keyboard.press("Control+Shift+z");
 
 /** The interactive canvas container (the ✕ and the pill are overlaid in it). */
 export const outfitCanvas = (page: Page) => page.getByTestId("outfit-canvas");

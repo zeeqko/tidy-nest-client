@@ -328,10 +328,10 @@ test.describe("selection ✕ and pill", () => {
     await expectCrossOnCorner(page, top, "after the drop");
     expect((await canvasNodes(page))[top].y, "the piece moved").toBeGreaterThan(middle[top].y + 10);
 
-    await page.getByRole("button", { name: "Undo" }).filter({ visible: true }).click();
+    await page.keyboard.press("Control+z");
     await expect.poll(async () => (await canvasNodes(page))[top].y).toBeCloseTo(middle[top].y, 6);
     await expectCrossOnCorner(page, top, "after Undo");
-    await page.getByRole("button", { name: "Redo" }).filter({ visible: true }).click();
+    await page.keyboard.press("Control+Shift+z");
     await expect.poll(async () => (await canvasNodes(page))[top].y).toBeGreaterThan(middle[top].y + 10);
     await expectCrossOnCorner(page, top, "after Redo");
 

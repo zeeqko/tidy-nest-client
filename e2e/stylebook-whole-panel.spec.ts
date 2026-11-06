@@ -27,7 +27,7 @@ import {
   saveScreenshot,
   selectGroup,
   stageTransform,
-  undoButton,
+  pressUndo,
   viewInfo,
   type CanvasNode,
 } from "./support/canvas";
@@ -173,7 +173,7 @@ test.describe("whole panel", () => {
     await page.waitForTimeout(300);
     expect((await canvasNodes(page))[2].x, "the dragged piece moved").not.toBeCloseTo(nodes[2].x, 3);
     expect(await stageTransform(page), "no jump after a drag").toEqual(before);
-    await undoButton(page).click();
+    await pressUndo(page);
     await expect.poll(async () => (await canvasNodes(page))[2].x).toBeCloseTo(nodes[2].x, 6);
     expect(await stageTransform(page), "no jump after undo").toEqual(before);
 

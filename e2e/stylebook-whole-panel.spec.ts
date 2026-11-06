@@ -271,9 +271,10 @@ test.describe("whole panel", () => {
   }, testInfo) => {
     await createMarginLook(userApi, closet);
     await page.goto("/stylebook");
-    const card = page.locator('[role="button"]').filter({ has: page.getByRole("heading", { name: "Margin Look" }) });
+    // The list tile is a link named after the look (it has no occasion).
+    const card = page.getByRole("link", { name: "Margin Look", exact: true });
     await expect(card).toBeVisible();
-    const composite = card.locator(".isolate.aspect-square");
+    const composite = card.getByTestId("look-thumbnail");
     const pieces = composite.locator(":scope > div.absolute");
     await expect(pieces).toHaveCount(3);
     await expect

@@ -106,6 +106,8 @@ test.describe("Style Book list", () => {
     expect(boxes[0].top).toBeCloseTo(boxes[1].top, 0);
     expect(boxes[2].top).toBeGreaterThan(boxes[0].bottom);
     for (const b of boxes) expect(b.width).toBeCloseTo(b.height, 0);
+    // Nothing makes the page scroll sideways (the pill row scrolls on its own).
+    expect(await page.evaluate(() => document.scrollingElement!.scrollWidth <= window.innerWidth)).toBe(true);
     // Back button kept; the old top-bar "+" is gone.
     await expect(page.getByRole("button", { name: "Go back" })).toBeVisible();
     await expect(page.getByRole("button", { name: "Create Look" })).toHaveCount(0);
@@ -281,7 +283,7 @@ test.describe("Style Book list", () => {
       expect(button.y + button.height, "clear of the raised Add item button").toBeLessThanOrEqual(add.y);
       expect(button.y + button.height, "within thumb reach").toBeGreaterThan(nav.y - 60);
       // Horizontally centred.
-      expect(Math.abs(button.x + button.width / 2 - 195)).toBeLessThan(1);
+      expect(Math.abs(button.x + button.width / 2 - page.viewportSize()!.width / 2)).toBeLessThan(1);
       // Scrolled to the bottom, the last tile can still be seen above it.
       await page.evaluate(() => window.scrollTo(0, document.body.scrollHeight));
       const lastTile = (await tiles(page).last().boundingBox())!;
@@ -297,6 +299,57 @@ test.describe("Style Book list", () => {
     }
     await newLook.click();
     await expect(page).toHaveURL(/\/stylebook\/create$/);
+  });
+
+  test("(h) web layout: the page container with symmetric margins, New look flush right, 3 / 4 / 5 / 6+ columns", async ({
+    authedPage: page,
+    userApi,
+    closet,
+  }, testInfo) => {
+    test.skip(testInfo.project.name !== "desktop", "web layout");
+    const looks = await seedLooks(userApi, closet);
+    // Enough looks to fill more than one row at every width checked.
+    for (const n of [1, 2, 3, 4]) {
+      looks.push(await userApi.createLook({ name: `Extra ${n}`, occasion: "", items: [{ itemId: closet.items[tee].id, x: 0, y: 0, width: 100, height: 140, rotation: 0, zIndex: 0 }] }));
+    }
+    await openList(page, looks);
+    await page.mouse.move(2, 2);
+
+    const heading = page.getByRole("heading", { name: "Style Book" });
+    const newLook = page.getByRole("button", { name: "New look" });
+    const columns = () =>
+      lookList(page)
+        .getByTestId("look-tile")
+        .evaluateAll((els) => {
+          const tops = els.map((el) => Math.round(el.getBoundingClientRect().top));
+          return tops.filter((t) => t === tops[0]).length;
+        });
+
+    // 1440x900: equal margins either side, the button's right edge on the grid's.
+    const width = await page.evaluate(() => document.documentElement.clientWidth);
+    const h = (await heading.boundingBox())!;
+    const b = (await newLook.boundingBox())!;
+    const grid = (await lookList(page).boundingBox())!;
+    const left = h.x;
+    const right = width - (b.x + b.width);
+    expect(Math.abs(left - right), `margins ${left} / ${right}`).toBeLessThanOrEqual(2);
+    expect(Math.abs(b.x + b.width - (grid.x + grid.width))).toBeLessThanOrEqual(2);
+    expect(Math.abs(grid.x - h.x)).toBeLessThanOrEqual(2);
+    expect(await columns()).toBe(5);
+    // Tiles stay square.
+    const tile = (await lookList(page).getByTestId("look-tile").first().boundingBox())!;
+    expect(Math.abs(tile.width - tile.height)).toBeLessThan(1);
+
+    for (const [w, hgt, expected] of [
+      [768, 1024, 3],
+      [1024, 768, 4],
+      [1920, 1080, 6],
+    ] as const) {
+      await page.setViewportSize({ width: w, height: hgt });
+      if (w === 1920) await expect.poll(columns, `columns at ${w}px`).toBeGreaterThanOrEqual(expected);
+      else await expect.poll(columns, `columns at ${w}px`).toBe(expected);
+      if (w !== 1024) await saveScreenshot(page, testInfo, `list-web-${w}x${hgt}`);
+    }
   });
 
   test("(f) empty Style Book: Nothing here yet, with a New look button", async ({ authedPage: page }, testInfo) => {

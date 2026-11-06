@@ -28,7 +28,9 @@ const newLookButtonClass =
  *   "New look" pill above the bottom nav;
  * - web: a heading row ("Style Book" + count, "New look" on the right), plain
  *   text filters (active = underlined), and an auto-fill grid of tiles whose
- *   name/occasion caption appears on hover or keyboard focus.
+ *   name/occasion caption appears on hover or keyboard focus. The web layout uses the
+ *   app's page container (centred, symmetric margins); 12.5rem minimum
+ *   columns give 3 at 768px, 4 at 1024px, 5 at 1440px and 7 at 1920px.
  * Tapping a tile opens the look's detail page, which owns edit and delete.
  */
 export function StyleBookPage() {
@@ -65,8 +67,8 @@ export function StyleBookPage() {
   }, [activeOccasion]);
 
   return (
-    <div className="w-full px-5 pt-2 pb-20 sm:px-12 sm:pt-6 sm:pb-12 lg:px-20">
-      <div className="flex w-full max-w-[60rem] flex-col gap-4 sm:gap-6 2xl:max-w-[72rem]">
+    <div className="w-full px-5 pt-2 pb-20 sm:px-12 sm:pt-6 sm:pb-12 lg:px-16">
+      <div className="mx-auto flex w-full max-w-cute-page flex-col gap-4 sm:gap-6 2xl:max-w-cute-page-wide">
         <MobileTopBar title="Style Book" subtitle={countLabel} backTo="/" flush />
 
         <div className="hidden w-full items-center justify-between gap-6 sm:flex">
@@ -86,6 +88,8 @@ export function StyleBookPage() {
             <div
               ref={pillRowRef}
               data-testid="occasion-pills"
+              role="group"
+              aria-label="Filter by occasion"
               className="no-scrollbar relative -mx-5 flex flex-nowrap gap-2 overflow-x-auto px-5 py-1 sm:hidden [&>*]:shrink-0 [&>*]:whitespace-nowrap"
             >
               {occasions.map((occasion) => (
@@ -101,7 +105,11 @@ export function StyleBookPage() {
             </div>
 
             {/* Web: plain text filters; the active one is darker with an underline. */}
-            <div data-testid="occasion-text-filters" className="hidden flex-wrap items-center gap-x-7 gap-y-2 sm:flex">
+            <div
+              data-testid="occasion-text-filters"
+              role="group"
+              aria-label="Filter by occasion"
+              className="hidden flex-wrap items-center gap-x-7 gap-y-2 sm:flex">
               {occasions.map((occasion) => {
                 const active = occasion === activeOccasion;
                 return (
@@ -158,7 +166,7 @@ export function StyleBookPage() {
         ) : (
           <ul
             aria-label="Looks"
-            className="grid w-full grid-cols-2 gap-2.5 sm:grid-cols-[repeat(auto-fill,minmax(9.5rem,1fr))] sm:gap-x-6 sm:gap-y-2"
+            className="grid w-full grid-cols-2 gap-2.5 sm:grid-cols-[repeat(auto-fill,minmax(12.5rem,1fr))] sm:gap-x-6 sm:gap-y-2"
           >
             {filteredLooks.map((look) => (
               <li key={look.id} className="min-w-0">

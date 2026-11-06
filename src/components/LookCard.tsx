@@ -35,7 +35,7 @@ export function LookCard({ look }: { look: ApiLook }) {
           The inset padding keeps pieces off the rounded corners. */}
       <div
         data-testid="look-tile"
-        className="flex aspect-square w-full items-center justify-center rounded-2xl border border-cute-border bg-cute-surface-alt p-[9%] outline-offset-2 outline-cute-primary group-focus-visible:outline-2 sm:border-0"
+        className="flex aspect-square w-full items-center justify-center overflow-hidden rounded-2xl border border-cute-border bg-cute-surface-alt p-[9%] outline-offset-2 outline-cute-primary group-focus-visible:outline-2 sm:border-0"
       >
         {/* `isolate` scopes the items' saved z-indexes (sparse, possibly
             negative on older looks) to this composite. */}
@@ -80,10 +80,10 @@ export function LookCard({ look }: { look: ApiLook }) {
       <div
         aria-hidden="true"
         data-testid="look-caption"
-        className="mt-1.5 hidden h-5 items-baseline justify-between gap-2 px-0.5 opacity-0 transition-opacity duration-150 group-hover:opacity-100 group-focus-visible:opacity-100 sm:flex"
+        className="mt-1.5 hidden h-5 items-baseline justify-between gap-2 px-0.5 opacity-0 transition-opacity duration-150 motion-reduce:transition-none group-hover:opacity-100 group-focus-visible:opacity-100 sm:flex"
       >
         <span className="min-w-0 truncate font-body text-[12.5px] font-semibold text-cute-text">{look.name}</span>
-        {look.occasion && (
+        {look.occasion.trim() && (
           <span className="shrink-0 font-body text-cute-11 font-medium text-cute-text-muted">{look.occasion}</span>
         )}
       </div>

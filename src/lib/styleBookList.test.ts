@@ -13,6 +13,11 @@ describe("occasionFilters", () => {
     const looks = [look("a", "Brunch"), look("b", "Work"), look("c", ""), look("d", "Gym"), look("e", "Brunch")];
     expect(occasionFilters(looks)).toEqual([ALL_OCCASIONS, ...seedOccasions, "Brunch", "Gym"]);
   });
+
+  it("trims occasions: whitespace-only is no occasion, padded ones merge with their trimmed form", () => {
+    const looks = [look("a", "   "), look("b", " Brunch "), look("c", "Brunch"), look("d", " Work")];
+    expect(occasionFilters(looks)).toEqual([ALL_OCCASIONS, ...seedOccasions, "Brunch"]);
+  });
 });
 
 describe("filterLooks", () => {
@@ -25,6 +30,12 @@ describe("filterLooks", () => {
   it("keeps only exact occasion matches", () => {
     expect(filterLooks(looks, "Work").map((l) => l.name)).toEqual(["a", "c"]);
     expect(filterLooks(looks, "Formal")).toEqual([]);
+  });
+
+  it("compares trimmed occasions, so padded looks match and blank ones match no occasion", () => {
+    const padded = [look("a", " Work "), look("b", "  "), look("c", "Work")];
+    expect(filterLooks(padded, "Work").map((l) => l.name)).toEqual(["a", "c"]);
+    expect(filterLooks(padded, "Formal")).toEqual([]);
   });
 });
 

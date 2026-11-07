@@ -1,5 +1,5 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32" width="32" height="32">
-  <rect width="32" height="32" rx="8" fill="#ff8fab"/>
-  <path d="M9,14 L16,8 L23,14 L23,21 Q23,25 19,25 L13,25 Q9,25 9,21 Z" fill="none" stroke="#ffffff" stroke-width="2.1" stroke-linejoin="round" stroke-linecap="round"/>
-  <path d="M16,21.84 L15.39,21.29 C13.23,19.33 11.8,18.03 11.8,16.45 C11.8,15.15 12.82,14.14 14.11,14.14 C14.84,14.14 15.54,14.48 16,15.01 C16.46,14.48 17.16,14.14 17.89,14.14 C19.18,14.14 20.2,15.15 20.2,16.45 C20.2,18.03 18.77,19.33 16.61,21.29 Z" fill="#ffffff"/>
+  <rect width="32" height="32" rx="8" fill="#99606E"/>
+  <path d="M9,14 L16,8 L23,14 L23,21 Q23,25 19,25 L13,25 Q9,25 9,21 Z" fill="none" stroke="#FBF3F0" stroke-width="2.1" stroke-linejoin="round" stroke-linecap="round"/>
+  <path d="M16,21.84 L15.39,21.29 C13.23,19.33 11.8,18.03 11.8,16.45 C11.8,15.15 12.82,14.14 14.11,14.14 C14.84,14.14 15.54,14.48 16,15.01 C16.46,14.48 17.16,14.14 17.89,14.14 C19.18,14.14 20.2,15.15 20.2,16.45 C20.2,18.03 18.77,19.33 16.61,21.29 Z" fill="#C9A15C"/>
 </svg>

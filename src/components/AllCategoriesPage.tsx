@@ -66,6 +66,7 @@ export function AllCategoriesPage() {
                 to={`/category/${category.id}`}
                 iconSrc={category.iconSrc}
                 iconName={category.iconName}
+                iconKey={category.iconKey}
                 colour={category.colour}
                 label={category.label}
                 itemCount={category.itemCount}

@@ -61,6 +61,8 @@ export interface Category {
   id: string;
   label: string;
   iconSrc?: string;
+  /** The raw stored icon key (illustration or lucide name), whatever it resolves to. */
+  iconKey?: string;
   /** Lucide icon name chosen in the category editor (used when no image exists). */
   iconName?: string;
   colour?: string;

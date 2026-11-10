@@ -9,13 +9,20 @@ import { getCategoryStats } from "../data/categoryStats";
 import { useItems } from "../hooks/useItems";
 import { useCategories } from "../hooks/useCategories";
 import { useCurrentUser } from "./RequireAuth";
+import { homeSummary } from "../lib/homeSummary";
 
 export function HomePage() {
   const user = useCurrentUser();
   const firstName = user.name.trim().split(/\s+/)[0];
   const navigate = useNavigate();
   const { categories, apiCategories, loading } = useCategories();
-  const { items, error } = useItems(apiCategories);
+  const { items, error, loading: itemsLoading } = useItems(apiCategories);
+  const summary = homeSummary({
+    itemCount: items.length,
+    categoryCount: categories.length,
+    loading: loading || itemsLoading,
+    itemsFailed: Boolean(error),
+  });
   const [search, setSearch] = useState("");
   const categoryStats = useMemo(
     () => getCategoryStats(categories, items),
@@ -44,7 +51,7 @@ export function HomePage() {
             Hi {firstName} 👋
           </h1>
           <p className="font-body text-cute-13 text-cute-text-muted sm:text-cute-15">
-            Here's what's tucked away at home
+            {summary ?? "\u00a0"}
           </p>
           {error && (
             <p className="font-body text-sm text-cute-danger">
@@ -79,7 +86,6 @@ export function HomePage() {
 
         <div className="flex w-full items-center justify-between sm:hidden">
           <p className="font-heading text-base font-semibold text-cute-text">Your Categories</p>
-          <p className="font-body text-xs text-cute-text-muted">Tap to explore</p>
         </div>
 
         {(shownCategories.length > 0 || showEmptyState) && (
@@ -90,6 +96,7 @@ export function HomePage() {
                 to={`/category/${category.id}`}
                 iconSrc={category.iconSrc}
                 iconName={category.iconName}
+                iconKey={category.iconKey}
                 colour={category.colour}
                 label={category.label}
                 itemCount={category.itemCount}

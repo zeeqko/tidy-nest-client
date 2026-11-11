@@ -4,21 +4,10 @@ import { test, expect } from "./fixtures";
 
 const shot = (name: string) => `e2e/screenshots/category-polish-${name}.png`;
 
-test("Home: count line replaces the old subtitle and 'Tap to explore' is gone", async ({ authedPage: page }, info) => {
-  await expect(page.getByText("5 things across 6 categories")).toBeVisible();
+test("Home: keeps its original subtitle and 'Tap to explore' is gone", async ({ authedPage: page }, info) => {
+  await expect(page.getByText("Here's what's tucked away at home")).toBeVisible();
   await expect(page.getByText("Tap to explore")).toHaveCount(0);
-  await expect(page.getByText(/tucked away at home/)).toHaveCount(0);
   await page.screenshot({ path: shot(`home-${info.project.name}`), fullPage: true });
-});
-
-test("Home: no '0 things' flash while inventory is still loading", async ({ authedPage: page }) => {
-  await page.route("**/api/inventory/**", async (route) => {
-    await new Promise((r) => setTimeout(r, 1200));
-    await route.continue();
-  });
-  await page.reload();
-  await expect(page.getByText(/^0 things/)).toHaveCount(0);
-  await expect(page.getByText("5 things across 6 categories")).toBeVisible({ timeout: 10_000 });
 });
 
 test("Home tiles: one SVG badge each, sized per viewport, tinted on desktop", async ({ authedPage: page }, info) => {
@@ -92,4 +81,20 @@ test("muted text uses the darker token", async ({ authedPage: page }) => {
   const sub = page.locator("p.text-cute-text-muted").first();
   await expect(sub).toBeVisible();
   expect(await sub.evaluate((el) => getComputedStyle(el).color)).toBe("rgb(122, 98, 104)");
+});
+
+test("Edit Category: Delete sits beside Save on the same row", async ({ authedPage: page }, info) => {
+  await page.getByRole("button", { name: "Open menu" }).click();
+  await page.getByRole("button", { name: "Edit Categories" }).click();
+  await page.getByRole("button", { name: "Edit Food" }).click();
+  const del = page.getByRole("button", { name: "Delete Category" });
+  const save = page.getByRole("button", { name: "Save Changes" });
+  await expect(del).toBeVisible();
+  await expect(save).toBeVisible();
+  const d = (await del.boundingBox())!;
+  const s = (await save.boundingBox())!;
+  // Same row: vertical centres within a few px, and Delete is left of Save.
+  expect(Math.abs(d.y + d.height / 2 - (s.y + s.height / 2))).toBeLessThan(4);
+  expect(d.x + d.width).toBeLessThan(s.x);
+  await page.screenshot({ path: shot(`edit-category-${info.project.name}`) });
 });

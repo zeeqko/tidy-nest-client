@@ -19,7 +19,9 @@
 // worker, which is safe precisely because it never touched the main thread.
 import type { WorkerRequest, WorkerResponse } from "./backgroundRemoval.worker";
 
-const DEFAULT_TIMEOUT_MS = 30_000;
+// Single-threaded WASM (no COOP/COEP) plus a first-run model download can
+// easily exceed 30s, so allow a generous budget.
+const DEFAULT_TIMEOUT_MS = 120_000;
 
 /**
  * Runs background removal on `source` and returns a PNG `Blob` with a
@@ -59,7 +61,10 @@ export async function removeBackground(
       }),
     ]);
     return result;
-  } catch {
+  } catch (err) {
+    // Swallowed by design (callers treat null as "no cutout"), but logged so
+    // the real cause (model fetch blocked, WASM error, timeout) is visible.
+    console.warn("backgroundRemoval: failed", err);
     return null;
   } finally {
     clearTimeout(timer);

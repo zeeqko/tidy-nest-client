@@ -9,20 +9,13 @@ import { getCategoryStats } from "../data/categoryStats";
 import { useItems } from "../hooks/useItems";
 import { useCategories } from "../hooks/useCategories";
 import { useCurrentUser } from "./RequireAuth";
-import { homeSummary } from "../lib/homeSummary";
 
 export function HomePage() {
   const user = useCurrentUser();
   const firstName = user.name.trim().split(/\s+/)[0];
   const navigate = useNavigate();
   const { categories, apiCategories, loading } = useCategories();
-  const { items, error, loading: itemsLoading } = useItems(apiCategories);
-  const summary = homeSummary({
-    itemCount: items.length,
-    categoryCount: categories.length,
-    loading: loading || itemsLoading,
-    itemsFailed: Boolean(error),
-  });
+  const { items, error } = useItems(apiCategories);
   const [search, setSearch] = useState("");
   const categoryStats = useMemo(
     () => getCategoryStats(categories, items),
@@ -51,7 +44,7 @@ export function HomePage() {
             Hi {firstName} 👋
           </h1>
           <p className="font-body text-cute-13 text-cute-text-muted sm:text-cute-15">
-            {summary ?? "\u00a0"}
+            Here's what's tucked away at home
           </p>
           {error && (
             <p className="font-body text-sm text-cute-danger">

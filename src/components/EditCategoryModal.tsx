@@ -209,12 +209,12 @@ export function EditCategoryModal({ category, onClose, onSaved }: EditCategoryMo
           : "Create a new category for your things"
       }
       footer={
-        <div className="flex w-full flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+        <div className="flex w-full items-center gap-3 sm:justify-between">
           {isEdit && category ? (
             <button
               type="button"
               onClick={() => setConfirmingDelete(true)}
-              className="flex items-center gap-1.5 self-start px-1 py-2.5 font-body text-cute-13 font-semibold text-cute-destructive transition hover:opacity-80"
+              className="flex shrink-0 items-center justify-center gap-1.5 rounded-full border border-cute-destructive/30 px-4 py-[0.8125rem] font-body text-cute-13 font-semibold text-cute-destructive transition hover:opacity-80 sm:border-0 sm:px-1 sm:py-2.5"
             >
               <Trash2 size={14} />
               Delete Category
@@ -222,7 +222,7 @@ export function EditCategoryModal({ category, onClose, onSaved }: EditCategoryMo
           ) : (
             <span className="hidden sm:block" />
           )}
-          <div className="flex w-full items-center gap-3 sm:w-auto">
+          <div className="flex flex-1 items-center gap-3 sm:w-auto sm:flex-none">
             <button
               type="button"
               onClick={onClose}
